@@ -9,6 +9,9 @@
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
 <body>
+    <script>
+        window.IS_AUTHENTICATED = {{ 'true' if current_user else 'false' }};
+    </script>
     <div class="wrapper">
         <!-- Sidebar -->
         <nav id="sidebar" class="bg-dark">
@@ -65,12 +68,9 @@
                             <span class="badge bg-{{ 'danger' if is_admin else 'secondary' }}">
                                 {{ current_user }} ({{ 'Admin' if is_admin else 'User' }})
                             </span>
-                            <form action="{{ url_for('logout') }}" method="POST" class="d-inline">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <button type="submit" class="btn btn-sm btn-outline-danger">
-                                    <i class="fas fa-right-from-bracket me-1"></i>Logout
-                                </button>
-                            </form>
+                            <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-danger">
+                                <i class="fas fa-right-from-bracket me-1"></i>Logout
+                            </a>
                         {% else %}
                             <a href="{{ url_for('login') }}" class="btn btn-sm btn-primary">
                                 <i class="fas fa-right-to-bracket me-1"></i>Login

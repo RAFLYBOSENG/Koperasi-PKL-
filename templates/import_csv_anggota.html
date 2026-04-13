@@ -1,11 +1,11 @@
 {% extends "base.html" %}
-{% block title %}Import Excel Anggota - Koperasi{% endblock %}
+{% block title %}Import CSV/Excel Anggota - Koperasi{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-10">
         <div class="card border-0 shadow-sm mb-4">
             <div class="card-header bg-primary text-white">
-                <h5 class="mb-0"><i class="fas fa-file-excel me-2"></i>Import Excel ringkasan anggota</h5>
+                <h5 class="mb-0"><i class="fas fa-file-csv me-2"></i>Import CSV/Excel ringkasan anggota</h5>
             </div>
             <div class="card-body">
                 <p class="text-muted small mb-3">
@@ -14,14 +14,13 @@
                     Sistem tidak menerima format satu kolom gabungan.
                 </p>
                 <a href="{{ url_for('download_sample_csv_anggota') }}" class="btn btn-outline-secondary btn-sm mb-3">
-                    <i class="fas fa-download me-1"></i>Unduh contoh Excel
+                    <i class="fas fa-download me-1"></i>Unduh contoh CSV
                 </a>
                 <form action="{{ url_for('preview_import_csv_anggota') }}" method="POST" enctype="multipart/form-data">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="mb-3">
-                        <label class="form-label">File Excel</label>
-                        <input type="file" name="file_csv" class="form-control" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
-                        <div class="form-text">Maks. 2 MB, maks. 500 baris data. Format: <code>.xlsx</code> atau <code>.xlsm</code>.</div>
+                        <label class="form-label">File CSV / Excel</label>
+                        <input type="file" name="file_csv" class="form-control" accept=".csv,.xlsx,.xlsm,text/csv,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>
+                        <div class="form-text">Maks. 2 MB, maks. 500 baris data. Format: <code>.csv</code>, <code>.xlsx</code>, <code>.xlsm</code>.</div>
                     </div>
                     <button type="submit" class="btn btn-primary">
                         <i class="fas fa-eye me-1"></i>Validasi &amp; pratinjau

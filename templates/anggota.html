@@ -11,7 +11,6 @@
             <div class="card-body">
                 {% if is_admin %}
                 <form action="/anggota/tambah" method="POST">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="mb-3">
                         <label class="form-label">NIK</label>
                         <input type="text" name="nik" class="form-control" placeholder="16 digit NIK">
@@ -42,7 +41,6 @@
                 </form>
                 <hr>
                 <form action="{{ url_for('import_anggota_excel') }}" method="POST" enctype="multipart/form-data">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <label class="form-label">Upload Excel Anggota (Upsert)</label>
                     <input type="file" name="file_excel" class="form-control mb-2" accept=".xlsx,.xlsm" required>
                     <div class="form-text mb-2">Kolom minimal: <code>nik</code> atau <code>no_anggota</code>, disarankan ada <code>nama</code>.</div>
@@ -52,14 +50,13 @@
                 </form>
                 <hr>
                 <form action="{{ url_for('import_csv_unified') }}" method="POST" enctype="multipart/form-data">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                    <label class="form-label">Import Excel gabungan (anggota + saldo)</label>
-                    <input type="file" name="file" class="form-control mb-2" accept=".xlsx,.xlsm" required>
+                    <label class="form-label">Import CSV gabungan (anggota + saldo)</label>
+                    <input type="file" name="file" class="form-control mb-2" accept=".csv" required>
                     <div class="form-text mb-2">
-                        Baris 1 = header kolom: <code>id_anggota</code>, <code>nama</code>, <code>nik</code>, <code>alamat</code>, <code>simpanan</code>, <code>pinjaman</code>, <code>tenor</code> — saldo diakumulasi, tenor pinjaman = max. Maks. 2 MB, 500 baris.
+                        Header: <code>id_anggota,nama,nik,alamat,simpanan,pinjaman,tenor</code> — saldo diakumulasi, tenor pinjaman = max.
                     </div>
                     <button type="submit" class="btn btn-outline-success w-100">
-                        <i class="fas fa-file-excel me-1"></i>Unggah &amp; Merge Excel
+                        <i class="fas fa-file-csv me-1"></i>Unggah &amp; Merge CSV
                     </button>
                 </form>
                 {% else %}
@@ -124,13 +121,10 @@
                                     <a href="{{ url_for('edit_anggota', id_anggota=a['id_anggota']) }}" class="btn btn-sm btn-warning text-dark" title="Edit">
                                         <i class="fas fa-pen"></i>
                                     </a>
-                                    <form action="/anggota/hapus/{{ a['id_anggota'] }}" method="POST" class="d-inline">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                        <button type="submit" class="btn btn-sm btn-danger"
-                                                onclick="return confirm('Hapus anggota ini?')" title="Hapus">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </form>
+                                    <a href="/anggota/hapus/{{ a['id_anggota'] }}" class="btn btn-sm btn-danger"
+                                       onclick="return confirm('Hapus anggota ini?')" title="Hapus">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
                                     {% endif %}
                                 </td>
                             </tr>

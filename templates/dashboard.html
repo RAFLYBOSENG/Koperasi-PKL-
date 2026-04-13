@@ -77,14 +77,18 @@
     </div>
 </div>
 
-<!-- Grafik Simpanan per Jenis -->
+<!-- Ringkasan Simpanan -->
 <div class="row g-4 mb-4">
     <div class="col-md-6">
         <div class="card border-0 shadow-sm">
             <div class="card-header bg-white">
-                <h5 class="mb-0"><i class="fas fa-chart-pie me-2 text-primary"></i>Simpanan per Jenis</h5>
+                <h5 class="mb-0"><i class="fas fa-chart-pie me-2 text-primary"></i>Simpanan per Jenis (mode saldo)</h5>
             </div>
             <div class="card-body">
+                <p class="small text-muted mb-3">
+                    Saat ini pencatatan simpanan menggunakan mode saldo per anggota. Nilai dashboard dialokasikan ke Manasuka,
+                    sedangkan kategori lain disiapkan untuk pengembangan berikutnya.
+                </p>
                 <div class="row">
                     {% for jenis, jumlah in simpanan_per_jenis.items() %}
                     <div class="col-4 text-center">
@@ -181,18 +185,14 @@
                         </td>
                         <td>
                             {% if p['status'] == 'Menunggu' %}
-                            <form action="{{ url_for('konfirmasi_pengajuan_anggota', id_pengajuan=p['id_pengajuan']) }}" method="POST" class="d-inline">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Setujui pengajuan ini?')">
-                                    <i class="fas fa-check"></i>
-                                </button>
-                            </form>
-                            <form action="{{ url_for('tolak_pengajuan_anggota', id_pengajuan=p['id_pengajuan']) }}" method="POST" class="d-inline">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Tolak pengajuan ini?')">
-                                    <i class="fas fa-xmark"></i>
-                                </button>
-                            </form>
+                            <a href="{{ url_for('konfirmasi_pengajuan_anggota', id_pengajuan=p['id_pengajuan']) }}"
+                               class="btn btn-sm btn-success" onclick="return confirm('Setujui pengajuan ini?')">
+                                <i class="fas fa-check"></i>
+                            </a>
+                            <a href="{{ url_for('tolak_pengajuan_anggota', id_pengajuan=p['id_pengajuan']) }}"
+                               class="btn btn-sm btn-danger" onclick="return confirm('Tolak pengajuan ini?')">
+                                <i class="fas fa-xmark"></i>
+                            </a>
                             {% else %}
                             <span class="text-muted small">Selesai</span>
                             {% endif %}

@@ -9,7 +9,7 @@
                 <h5 class="mb-0"><i class="fas fa-file-excel me-2"></i>Export Laporan Simpanan</h5>
             </div>
             <div class="card-body">
-                <p class="text-muted">Total {{ simpanan|length }} saldo simpanan (per anggota) tercatat.</p>
+                <p class="text-muted">Total {{ simpanan|length }} baris saldo simpanan per anggota tercatat di sistem.</p>
                 {% if is_admin %}
                     <a href="/export/simpanan" class="btn btn-success">
                         <i class="fas fa-download me-1"></i>Download Excel Simpanan
@@ -34,7 +34,7 @@
                 <h5 class="mb-0"><i class="fas fa-file-excel me-2"></i>Export Laporan Pinjaman</h5>
             </div>
             <div class="card-body">
-                <p class="text-muted">Total {{ pinjaman|length }} saldo pinjaman (per anggota) tercatat.</p>
+                <p class="text-muted">Total {{ pinjaman|length }} data pinjaman tercatat (termasuk status menunggu/disetujui/lunas/ditolak).</p>
                 {% if is_admin %}
                     <a href="/export/pinjaman" class="btn btn-warning text-dark">
                         <i class="fas fa-download me-1"></i>Download Excel Pinjaman
@@ -60,7 +60,8 @@
     </div>
     <div class="card-body">
         <p class="text-muted mb-3">
-            Excel berisi tabel Pinjaman, tabel Simpanan, serta ringkasan SHU Pinjaman (bunga yang sudah dibayar, dialokasikan 65% untuk anggota).
+            Excel berisi tabel pinjaman, tabel simpanan, serta ringkasan SHU pinjaman dari cicilan berstatus disetujui
+            (alokasi 65% untuk anggota).
         </p>
         {% if is_admin %}
             <a href="/export/laporan-terpadu" class="btn btn-primary w-100">

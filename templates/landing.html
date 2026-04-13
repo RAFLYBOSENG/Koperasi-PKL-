@@ -100,7 +100,7 @@
                             <h3 class="h6 fw-bold text-success"><i class="fas fa-piggy-bank me-2"></i>Simpanan</h3>
                             <p class="small text-muted mb-0">
                                 Di sistem ini tercatat jenis simpanan: <strong>Manasuka</strong>, <strong>Hari Raya</strong>, dan <strong>Pendidikan</strong>.
-                                Anggota dapat mengajukan setoran; admin mengonfirmasi sebelum masuk ke saldo resmi.
+                                Pencatatan simpanan langsung menambah saldo anggota pada sistem (tanpa antrean konfirmasi baris).
                             </p>
                         </div>
                     </div>
@@ -110,9 +110,10 @@
                         <div class="card-body">
                             <h3 class="h6 fw-bold text-warning"><i class="fas fa-hand-holding-dollar me-2"></i>Pinjaman</h3>
                             <p class="small text-muted mb-0">
-                                Anggota dapat memilih tenor <strong>1-24 bulan</strong> sesuai kebutuhan. Bunga otomatis:
-                                <strong>1-3 bln: 2%</strong>, <strong>4-12 bln: 1.5%</strong>, <strong>13-24 bln: 1%</strong>.
-                                Pengajuan tetap melalui persetujuan admin.
+                                Produk pinjaman mengikuti jenis: <strong>Solusi Cepat</strong>, <strong>Jangka Pendek</strong>,
+                                <strong>Jangka Panjang</strong>, dan <strong>Modal Usaha</strong> dengan rentang tenor dan bunga berbeda.
+                                Perhitungan menggunakan bunga flat bulanan, dengan provisi tambahan 2% untuk tenor di atas 12 bulan.
+                                Pengajuan pinjaman tetap melalui persetujuan admin.
                             </p>
                         </div>
                     </div>
@@ -196,27 +197,37 @@
             <div class="card border-0 shadow-sm simulasi-box">
                 <div class="card-body">
                     <div class="row g-2 align-items-end">
+                        <div class="col-md-4">
+                            <label class="form-label small mb-1">Jenis pinjaman</label>
+                            <select id="simJenisInput" class="form-select form-select-sm">
+                                <option value="Solusi Cepat">Solusi Cepat</option>
+                                <option value="Jangka Pendek">Jangka Pendek</option>
+                                <option value="Jangka Panjang">Jangka Panjang</option>
+                                <option value="Modal Usaha">Modal Usaha</option>
+                            </select>
+                        </div>
                         <div class="col-md-5">
                             <label class="form-label small mb-1">Tenor (bulan)</label>
                             <select id="simTenorInput" class="form-select form-select-sm">
                                 <option value="">Pilih tenor</option>
-                                {% for n in range(1, 25) %}
+                                {% for n in range(1, 121) %}
                                 <option value="{{ n }}">{{ n }} bulan</option>
                                 {% endfor %}
                             </select>
-                            <div class="form-text">Bunga: 1-3 bln 2%, 4-12 bln 1.5%, 13-24 bln 1%.</div>
+                            <div class="form-text" id="simRuleText">Tenor dan bunga mengikuti jenis pinjaman yang dipilih.</div>
                         </div>
-                        <div class="col-md-5">
+                        <div class="col-md-3">
                             <label class="form-label small mb-1">Pinjaman (Rp)</label>
                             <input type="text" id="simPlafon" class="form-control form-control-sm" placeholder="5000000">
                         </div>
-                        <div class="col-md-2">
+                        <div class="col-md-12">
                             <button type="button" class="btn btn-primary btn-sm w-100" id="simBtnHitung">Hitung</button>
                         </div>
                     </div>
                     <div id="simHasil" class="mt-3 small d-none">
                         <table class="table table-sm table-bordered mb-0">
                             <tr><td>Bunga</td><td id="simBunga">-</td></tr>
+                            <tr><td>Provisi</td><td id="simProvisi">-</td></tr>
                             <tr><td>Tenor</td><td id="simTenor">-</td></tr>
                             <tr><td>Total bayar</td><td id="simTotal" class="fw-bold">-</td></tr>
                             <tr><td>Cicilan/bulan</td><td id="simCicilan" class="fw-bold text-primary">-</td></tr>
@@ -305,7 +316,6 @@
                 </div>
                 <div class="col-lg-6 mt-3 mt-lg-0">
                     <form method="POST" action="{{ url_for('pengajuan_anggota_baru') }}" class="row g-2">
-                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <div class="col-md-6">
                             <input type="text" name="nama" class="form-control form-control-sm" placeholder="Nama lengkap" required>
                         </div>
@@ -344,19 +354,83 @@
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
     <script>
     (function() {
+        var SIM_RULES = {
+            'Solusi Cepat': {
+                ranges: [{ min: 1, max: 2 }],
+                text: 'Solusi Cepat: tenor 1-2 bulan, bunga flat 2.0%/bulan, tanpa provisi.'
+            },
+            'Jangka Pendek': {
+                ranges: [{ min: 1, max: 12 }],
+                text: 'Jangka Pendek: tenor 1-12 bulan, bunga flat 1.5%/bulan, tanpa provisi.'
+            },
+            'Jangka Panjang': {
+                ranges: [{ min: 13, max: 24 }, { min: 36, max: 120 }],
+                text: 'Jangka Panjang: tenor 13-24 bulan (0.80%) atau 36-120 bulan (0.75%), ditambah provisi 2%. Tenor 25-35 tidak tersedia.'
+            },
+            'Modal Usaha': {
+                ranges: [{ min: 1, max: 60 }],
+                text: 'Modal Usaha: tenor 1-60 bulan, bunga flat 0.50%/bulan. Jika tenor >12 bulan, ditambah provisi 2%.'
+            }
+        };
+
+        function tenorDiizinkan(jenis, tenor) {
+            var rule = SIM_RULES[jenis];
+            if (!rule) return true;
+            return rule.ranges.some(function(r) {
+                return tenor >= r.min && tenor <= r.max;
+            });
+        }
+
+        function syncSimTenorByJenis() {
+            var jenisEl = document.getElementById('simJenisInput');
+            var tenorEl = document.getElementById('simTenorInput');
+            var ruleText = document.getElementById('simRuleText');
+            if (!jenisEl || !tenorEl) return;
+
+            var jenis = jenisEl.value;
+            var selected = parseInt(tenorEl.value, 10);
+            Array.from(tenorEl.options).forEach(function(opt) {
+                if (!opt.value) return;
+                var n = parseInt(opt.value, 10);
+                var ok = tenorDiizinkan(jenis, n);
+                opt.disabled = !ok;
+                opt.hidden = !ok;
+            });
+
+            if (Number.isInteger(selected) && !tenorDiizinkan(jenis, selected)) {
+                tenorEl.value = '';
+            }
+
+            if (ruleText && SIM_RULES[jenis]) {
+                ruleText.textContent = SIM_RULES[jenis].text;
+            }
+        }
+
         function parseRp(s) {
             return parseInt(String(s).replace(/\D/g, ''), 10) || 0;
         }
+
+        var simJenisInput = document.getElementById('simJenisInput');
+        if (simJenisInput) {
+            simJenisInput.addEventListener('change', syncSimTenorByJenis);
+        }
+
         document.getElementById('simBtnHitung').addEventListener('click', function() {
+            var jenis = document.getElementById('simJenisInput').value;
             var tenor = document.getElementById('simTenorInput').value;
             var plafon = parseRp(document.getElementById('simPlafon').value);
             if (!plafon) { alert('Isi plafon terlebih dahulu.'); return; }
             if (!tenor) { alert('Pilih tenor terlebih dahulu.'); return; }
-            fetch('/pinjaman/hitung?tenor=' + encodeURIComponent(tenor) + '&plafon=' + plafon)
+            fetch('/pinjaman/hitung?tenor=' + encodeURIComponent(tenor) + '&plafon=' + plafon + '&jenis_pinjaman=' + encodeURIComponent(jenis))
                 .then(function(r) { return r.json(); })
                 .then(function(data) {
                     if (data.error) { alert(data.error); return; }
                     document.getElementById('simBunga').textContent = data.bunga_persen + '%/bulan';
+                    if ((data.provisi_persen || 0) > 0) {
+                        document.getElementById('simProvisi').textContent = data.provisi_persen + '% (Rp ' + Number(data.provisi_nominal || 0).toLocaleString('id-ID') + ')';
+                    } else {
+                        document.getElementById('simProvisi').textContent = 'Tidak ada';
+                    }
                     document.getElementById('simTenor').textContent = data.tenor + ' bulan';
                     document.getElementById('simTotal').textContent = 'Rp ' + Number(data.total_bayar).toLocaleString('id-ID');
                     document.getElementById('simCicilan').textContent = 'Rp ' + Number(data.cicilan_per_bulan).toLocaleString('id-ID');
@@ -364,6 +438,8 @@
                 })
                 .catch(function() { alert('Gagal menghitung. Periksa koneksi atau jalankan ulang aplikasi.'); });
         });
+
+            syncSimTenorByJenis();
     })();
     </script>
 </body>

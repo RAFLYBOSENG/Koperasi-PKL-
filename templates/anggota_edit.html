@@ -10,7 +10,6 @@
             </div>
             <div class="card-body">
                 <form action="{{ url_for('edit_anggota', id_anggota=anggota['id_anggota']) }}" method="POST">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="mb-3">
                         <label class="form-label">NIK</label>
                         <input type="text" name="nik" class="form-control" value="{{ anggota.get('nik', '') }}" placeholder="16 digit NIK">

@@ -1,1 +1,4 @@
 id_cicilan,id_pinjaman,id_anggota,no_anggota,nama_anggota,jumlah,tanggal_pengajuan,status,tanggal_konfirmasi,dikonfirmasi_oleh,diajukan_oleh,keterangan,metode_pembayaran,detail_pembayaran
+8099c043-34a3-4991-9de4-7b5196ed4fe3,a125a1c9-a388-4e7d-8306-e9ca07d2e309,9b6a5ab2-720d-4c05-bb25-0b8629c85dd3,AGT-0001,boseng,286846.15,2026-04-13,Disetujui,2026-04-13,admin,admin,Pembayaran cicilan melalui admin (kas koperasi),Admin,
+6e575d6b-cc3c-4c15-b2c7-0d004aca6dc5,e90ccf76-dd7d-4c57-9cd6-83f314b06a68,9b6a5ab2-720d-4c05-bb25-0b8629c85dd3,AGT-0001,boseng,84923.08,2026-04-13,Disetujui,2026-04-13,admin,boseng,Pengajuan pembayaran via Indomaret,Indomaret,
+921e9e43-56eb-4da0-83c2-1db7351be404,e90ccf76-dd7d-4c57-9cd6-83f314b06a68,9b6a5ab2-720d-4c05-bb25-0b8629c85dd3,AGT-0001,boseng,84923.08,2026-04-13,Disetujui,2026-04-13,admin,boseng,Pengajuan pembayaran via Dana,Dana,

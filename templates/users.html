@@ -9,7 +9,6 @@
             </div>
             <div class="card-body">
                 <form action="{{ url_for('users_tambah') }}" method="POST">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="mb-3">
                         <label class="form-label">Username</label>
                         <input type="text" name="username" class="form-control" required placeholder="contoh: budi">
@@ -92,7 +91,6 @@
                                 <td>{{ u.get('created_at','') }}</td>
                                 <td class="d-flex gap-2">
                                     <form action="{{ url_for('users_reset_password', id_user=u['id_user']) }}" method="POST" class="d-inline">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                         <input type="password" name="new_password" class="form-control form-control-sm d-inline"
                                                style="width:160px" placeholder="password baru" required minlength="8" autocomplete="new-password">
                                         <button class="btn btn-sm btn-outline-primary" type="submit" title="Reset Password">
@@ -100,14 +98,12 @@
                                         </button>
                                     </form>
                                     {% if u['username'] != current_user %}
-                                    <form action="{{ url_for('users_hapus', id_user=u['id_user']) }}" method="POST" class="d-inline">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                        <button type="submit" class="btn btn-sm btn-outline-danger"
-                                                onclick="return confirm('Hapus user {{ u['username'] }}?')"
-                                                title="Hapus User">
-                                            <i class="fas fa-trash"></i>
-                                        </button>
-                                    </form>
+                                    <a href="{{ url_for('users_hapus', id_user=u['id_user']) }}"
+                                       class="btn btn-sm btn-outline-danger"
+                                       onclick="return confirm('Hapus user {{ u['username'] }}?')"
+                                       title="Hapus User">
+                                        <i class="fas fa-trash"></i>
+                                    </a>
                                     {% else %}
                                     <span class="text-muted small align-self-center">akun aktif</span>
                                     {% endif %}

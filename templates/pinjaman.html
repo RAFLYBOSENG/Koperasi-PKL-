@@ -10,7 +10,6 @@
             </div>
             <div class="card-body">
                 <form action="/pinjaman/tambah" method="POST" id="formPinjaman">
-                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="mb-3">
                         <label class="form-label">No Anggota</label>
                         {% if is_admin %}
@@ -49,11 +48,17 @@
                     <div class="mb-3">
                         <label class="form-label">Jenis pinjaman</label>
                         <select name="jenis_pinjaman" id="selectJenisPinjaman" class="form-select" required>
+                            {% set jenis_labels = {
+                                'Solusi Cepat': 'Solusi Cepat (1-2 bln | 2.0%)',
+                                'Jangka Pendek': 'Jangka Pendek (1-12 bln | 1.5%)',
+                                'Jangka Panjang': 'Jangka Panjang (13-24 bln 0.80% / 36-120 bln 0.75%)',
+                                'Modal Usaha': 'Modal Usaha (1-60 bln | 0.50%)'
+                            } %}
                             {% for j in jenis_pinjaman_choices %}
-                            <option value="{{ j }}">{{ j }}</option>
+                            <option value="{{ j }}">{{ jenis_labels.get(j, j) }}</option>
                             {% endfor %}
                         </select>
-                        <div class="form-text">Jangka pendek dan panjang dipisah (bunga berbeda), tidak digabung ke satu saldo.</div>
+                        <div class="form-text" id="jenisPinjamanRules">Pilih jenis pinjaman untuk melihat rentang tenor dan bunga yang berlaku.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Pinjaman (Rp)</label>
@@ -64,16 +69,17 @@
                         <label class="form-label">Tenor (bulan)</label>
                         <select name="tenor_bulan" id="selectTenor" class="form-select" required>
                             <option value="">-- Pilih tenor --</option>
-                            {% for n in range(1, 25) %}
+                            {% for n in range(1, 121) %}
                             <option value="{{ n }}">{{ n }} bulan</option>
                             {% endfor %}
                         </select>
-                        <div class="form-text">Bunga otomatis: 1-3 bln 2%, 4-12 bln 1.5%, 13-24 bln 1%.</div>
+                        <div class="form-text" id="tenorHelpText">Tenor akan difilter otomatis sesuai jenis pinjaman.</div>
                     </div>
                     <div class="mb-3">
                         <div class="alert alert-light border py-2 mb-0 small">
                             <strong>DSR otomatis</strong> dari penghasilan bersih anggota (30–40%): plafon maksimal mengikuti
-                            kapasitas cicilan = (penghasilan × DSR) − cicilan lain.
+                            kapasitas cicilan = (penghasilan × DSR) − cicilan lain. Untuk tenor &gt; 12 bulan berlaku
+                            provisi tambahan 2% dari pokok pinjaman.
                         </div>
                     </div>
 
@@ -82,6 +88,7 @@
                         <div class="card-body py-2">
                             <table class="table table-sm mb-0">
                                 <tr><td class="text-muted">Bunga</td><td class="fw-bold" id="estBunga">-</td></tr>
+                                <tr><td class="text-muted">Provisi</td><td class="fw-bold" id="estProvisi">-</td></tr>
                                 <tr><td class="text-muted">Tenor</td><td class="fw-bold" id="estTenor">-</td></tr>
                                 <tr><td class="text-muted">Total Bayar</td><td class="fw-bold text-danger" id="estTotal">-</td></tr>
                                 <tr><td class="text-muted">Cicilan/Bulan</td><td class="fw-bold text-primary" id="estCicilan">-</td></tr>
@@ -163,24 +170,17 @@
                                 <td>
                                     {% if is_admin %}
                                         {% if p['status'] == 'Menunggu' %}
-                                            <form action="/pinjaman/konfirmasi/{{ p['id_pinjaman'] }}" method="POST" class="d-inline">
-                                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                                <button type="submit" class="btn btn-sm btn-success"
-                                                        onclick="return confirm('Setujui pinjaman ini?')" title="Setujui">
-                                                    <i class="fas fa-check"></i>
-                                                </button>
-                                            </form>
-                                            <form action="/pinjaman/tolak/{{ p['id_pinjaman'] }}" method="POST" class="d-inline">
-                                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                                <button type="submit" class="btn btn-sm btn-warning text-dark"
-                                                        onclick="return confirm('Tolak pinjaman ini?')" title="Tolak">
-                                                    <i class="fas fa-xmark"></i>
-                                                </button>
-                                            </form>
+                                            <a href="/pinjaman/konfirmasi/{{ p['id_pinjaman'] }}" class="btn btn-sm btn-success"
+                                               onclick="return confirm('Setujui pinjaman ini?')" title="Setujui">
+                                                <i class="fas fa-check"></i>
+                                            </a>
+                                            <a href="/pinjaman/tolak/{{ p['id_pinjaman'] }}" class="btn btn-sm btn-warning text-dark"
+                                               onclick="return confirm('Tolak pinjaman ini?')" title="Tolak">
+                                                <i class="fas fa-xmark"></i>
+                                            </a>
                                         {% endif %}
                                         {% if p['status'] == 'Disetujui' and (p['sisa_pinjaman']|float) > 0 %}
                                         <form action="{{ url_for('angsur_pinjaman', id_pinjaman=p['id_pinjaman']) }}" method="POST" class="d-inline-flex flex-column gap-1" style="max-width:220px;">
-                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                             <input type="text" name="keterangan" class="form-control form-control-sm" placeholder="Keterangan bayar (opsional)">
                                             <button type="submit" class="btn btn-sm btn-primary" title="Bayar cicilan (admin)">
                                                 <i class="fas fa-money-bill-wave me-1"></i>Bayar (admin)
@@ -246,20 +246,14 @@
                                 <td class="small">{{ c.get('metode_pembayaran', '') or '-' }}</td>
                                 <td class="small">{{ c['keterangan'] }}</td>
                                 <td>
-                                    <form action="/pinjaman/cicilan/konfirmasi/{{ c['id_cicilan'] }}" method="POST" class="d-inline">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                        <button type="submit" class="btn btn-sm btn-success"
-                                                onclick="return confirm('Setujui pengajuan bayar cicilan ini?')">
-                                            <i class="fas fa-check"></i>
-                                        </button>
-                                    </form>
-                                    <form action="/pinjaman/cicilan/tolak/{{ c['id_cicilan'] }}" method="POST" class="d-inline">
-                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                        <button type="submit" class="btn btn-sm btn-danger"
-                                                onclick="return confirm('Tolak pengajuan bayar cicilan ini?')">
-                                            <i class="fas fa-xmark"></i>
-                                        </button>
-                                    </form>
+                                    <a href="/pinjaman/cicilan/konfirmasi/{{ c['id_cicilan'] }}" class="btn btn-sm btn-success"
+                                       onclick="return confirm('Setujui pengajuan bayar cicilan ini?')">
+                                        <i class="fas fa-check"></i>
+                                    </a>
+                                    <a href="/pinjaman/cicilan/tolak/{{ c['id_cicilan'] }}" class="btn btn-sm btn-danger"
+                                       onclick="return confirm('Tolak pengajuan bayar cicilan ini?')">
+                                        <i class="fas fa-xmark"></i>
+                                    </a>
                                 </td>
                             </tr>
                             {% endfor %}
@@ -281,7 +275,6 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
             </div>
             <form id="formAjukanCicilanUser" method="POST">
-                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <div class="modal-body">
                     <p class="small text-muted mb-2">Pilih saluran pembayaran / transfer (akan diverifikasi admin).</p>
                     <p class="small mb-2">
@@ -312,6 +305,58 @@
 {% endif %}
 
 <script>
+const LOAN_RULES = {
+    'Solusi Cepat': {
+        ranges: [{ min: 1, max: 2, bunga: 2.0 }],
+        info: 'Solusi Cepat: tenor 1-2 bulan, bunga flat 2.0%/bulan, tanpa provisi.'
+    },
+    'Jangka Pendek': {
+        ranges: [{ min: 1, max: 12, bunga: 1.5 }],
+        info: 'Jangka Pendek: tenor 1-12 bulan, bunga flat 1.5%/bulan, tanpa provisi.'
+    },
+    'Jangka Panjang': {
+        ranges: [{ min: 13, max: 24, bunga: 0.8 }, { min: 36, max: 120, bunga: 0.75 }],
+        info: 'Jangka Panjang: tenor 13-24 bulan (0.80%) atau 36-120 bulan (0.75%), ditambah provisi 2%. Tenor 25-35 tidak tersedia.'
+    },
+    'Modal Usaha': {
+        ranges: [{ min: 1, max: 60, bunga: 0.5 }],
+        info: 'Modal Usaha: tenor 1-60 bulan, bunga flat 0.50%/bulan. Jika tenor >12 bulan, ditambah provisi 2%.'
+    }
+};
+
+function tenorDiizinkan(jenis, tenor) {
+    const rule = LOAN_RULES[jenis];
+    if (!rule || !rule.ranges) return true;
+    return rule.ranges.some(r => tenor >= r.min && tenor <= r.max);
+}
+
+function updatePinjamanRulesUI() {
+    const jenisEl = document.getElementById('selectJenisPinjaman');
+    const tenorEl = document.getElementById('selectTenor');
+    const jenisInfoEl = document.getElementById('jenisPinjamanRules');
+    const tenorInfoEl = document.getElementById('tenorHelpText');
+    if (!jenisEl || !tenorEl) return;
+
+    const jenis = jenisEl.value;
+    const selectedTenor = parseInt(tenorEl.value, 10);
+
+    Array.from(tenorEl.options).forEach(opt => {
+        if (!opt.value) return;
+        const n = parseInt(opt.value, 10);
+        const allowed = tenorDiizinkan(jenis, n);
+        opt.disabled = !allowed;
+        opt.hidden = !allowed;
+    });
+
+    if (Number.isInteger(selectedTenor) && !tenorDiizinkan(jenis, selectedTenor)) {
+        tenorEl.value = '';
+    }
+
+    const info = LOAN_RULES[jenis]?.info || 'Pilih jenis pinjaman untuk melihat rentang tenor dan bunga yang berlaku.';
+    if (jenisInfoEl) jenisInfoEl.textContent = info;
+    if (tenorInfoEl) tenorInfoEl.textContent = info;
+}
+
 // Cek tunggakan saat memilih anggota
 const selectAnggotaPinjaman = document.getElementById('selectAnggotaPinjaman');
 if (selectAnggotaPinjaman) selectAnggotaPinjaman.addEventListener('change', function() {
@@ -340,7 +385,13 @@ if (inputPlafon) inputPlafon.addEventListener('input', hitungEstimasi);
 const selectTenor = document.getElementById('selectTenor');
 if (selectTenor) selectTenor.addEventListener('change', hitungEstimasi);
 const selectJenisPinjaman = document.getElementById('selectJenisPinjaman');
-if (selectJenisPinjaman) selectJenisPinjaman.addEventListener('change', hitungEstimasi);
+if (selectJenisPinjaman) {
+    selectJenisPinjaman.addEventListener('change', function() {
+        updatePinjamanRulesUI();
+        hitungEstimasi();
+        validasiPlafonInput();
+    });
+}
 let plafonMaksAktif = null;
 // Hitung estimasi pinjaman
 function hitungEstimasi() {
@@ -373,6 +424,11 @@ function hitungEstimasi() {
                     return;
                 }
                 document.getElementById('estBunga').textContent = data.bunga_persen + '%/bulan';
+                if ((data.provisi_persen || 0) > 0) {
+                    document.getElementById('estProvisi').textContent = data.provisi_persen + '% (Rp ' + Number(data.provisi_nominal || 0).toLocaleString('id-ID') + ')';
+                } else {
+                    document.getElementById('estProvisi').textContent = 'Tidak ada';
+                }
                 document.getElementById('estTenor').textContent = data.tenor + ' bulan';
                 document.getElementById('estTotal').textContent = 'Rp ' + data.total_bayar.toLocaleString('id-ID');
                 document.getElementById('estCicilan').textContent = 'Rp ' + data.cicilan_per_bulan.toLocaleString('id-ID');
@@ -441,5 +497,7 @@ if (tombolAjukanBayar.length && formAjukanCicilanUser) {
         });
     });
 }
+
+updatePinjamanRulesUI();
 </script>
 {% endblock %}
