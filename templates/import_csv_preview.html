@@ -1,0 +1,89 @@
+{% extends "base.html" %}
+{% block title %}Pratinjau Import Excel - Koperasi{% endblock %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-lg-10">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-table me-2 text-primary"></i>Pratinjau: {{ filename }}</h5>
+                <span class="badge bg-info">{{ rows|length }} baris</span>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-light border small mb-3">
+                    <strong>Mode overwrite</strong>: jumlah simpanan ringkasan (Manasuka) diganti; pinjaman aktif terbaru — pokok diganti, tenor mengikuti data sistem, sisa disesuaikan dengan pembayaran yang sudah masuk.
+                    <br>
+                    <strong>Mode append</strong>: tambah ke jumlah simpanan dan pokok pinjaman aktif; tenor tidak berubah.
+                </div>
+                <div class="alert alert-info border small mb-3">
+                    <i class="fas fa-info-circle me-1"></i>
+                    <strong>Import hanya memerlukan kolom utama: <span class="badge bg-primary">nik</span> dan <span class="badge bg-primary">no hp</span>.</strong>
+                    Kolom lain bersifat opsional.
+                </div>
+                <div class="mb-3">
+                    <span class="small text-muted me-2">Kolom terdeteksi:</span>
+                    {% for c in detected_columns %}
+                    <span class="badge bg-secondary me-1">{{ c }}</span>
+                    {% endfor %}
+                    {% if not detected_columns %}
+                    <span class="badge bg-warning text-dark">tidak ada</span>
+                    {% endif %}
+                </div>
+                <div class="table-responsive mb-4" style="max-height: 360px; overflow-y: auto;">
+                    <table class="table table-bordered table-sm align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Baris</th>
+                                <th>NIK <span class="text-danger">*</span></th>
+                                <th>No HP <span class="text-danger">*</span></th>
+                                <th>Nama</th>
+                                <th>Simpanan</th>
+                                <th>Pinjaman</th>
+                                <th>Tenor</th>
+                                <th>Validasi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in rows %}
+                            <tr class="{{ 'table-danger' if r.errors else '' }}">
+                                <td>{{ r.line }}</td>
+                                <td>{{ r.nik }}</td>
+                                <td>{{ r.no_hp }}</td>
+                                <td>{{ r.nama }}</td>
+                                <td>{% if r.simpanan is not none %}{{ "{:,.0f}".format(r.simpanan) }}{% else %}-{% endif %}</td>
+                                <td>{% if r.pinjaman is not none %}{{ "{:,.0f}".format(r.pinjaman) }}{% else %}-{% endif %}</td>
+                                <td>{% if r.tenor_bulan is not none %}{{ r.tenor_bulan }} bulan{% else %}-{% endif %}</td>
+                                <td class="small">
+                                    {% if r.errors %}
+                                        {% for e in r.errors %}<span class="text-danger">{{ e }}</span>{% if not loop.last %}<br>{% endif %}{% endfor %}
+                                    {% else %}
+                                        <span class="text-success">OK</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <form action="{{ url_for('execute_import_csv_anggota') }}" method="POST" class="row g-3 align-items-end">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="token" value="{{ token }}">
+                    <div class="col-md-4">
+                        <label class="form-label">Mode import</label>
+                        <select name="mode" class="form-select" required>
+                            <option value="append">Append (tambah ke data ada)</option>
+                            <option value="overwrite">Overwrite (ganti ringkasan)</option>
+                        </select>
+                    </div>
+                    <div class="col-md-8">
+                        <button type="submit" class="btn btn-success me-2" onclick="return confirm('Jalankan import dengan mode yang dipilih?')">
+                            <i class="fas fa-check me-1"></i>Eksekusi import
+                        </button>
+                        <a href="{{ url_for('halaman_import_csv_anggota') }}" class="btn btn-outline-secondary">Batal</a>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

@@ -1,0 +1,127 @@
+{% extends "base.html" %}
+{% block title %}Simpanan - Koperasi{% endblock %}
+{% block content %}
+<div class="row g-4">
+    <!-- Form Input Simpanan -->
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="fas fa-piggy-bank me-2"></i>Input Simpanan</h5>
+            </div>
+            <div class="card-body">
+                <form action="/simpanan/tambah" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="mb-3">
+                        <label class="form-label">No Anggota</label>
+                        <div class="input-group">
+                            {% if is_admin %}
+                                <select name="id_anggota" id="selectAnggota" class="form-select" required>
+                                    <option value="">-- Pilih Anggota --</option>
+                                    {% for a in anggota %}
+                                    <option value="{{ a['id_anggota'] }}" data-nama="{{ a['nama'] }}">
+                                        {{ a['no_anggota'] }} - {{ a['nama'] }}
+                                    </option>
+                                    {% endfor %}
+                                </select>
+                            {% else %}
+                                {% if anggota|length > 0 %}
+                                    <input type="hidden" name="id_anggota" value="{{ anggota[0]['id_anggota'] }}">
+                                    <input type="text" class="form-control" value="{{ anggota[0]['no_anggota'] }} - {{ anggota[0]['nama'] }}" readonly>
+                                {% else %}
+                                    <input type="text" class="form-control" value="Akun belum dihubungkan ke anggota" readonly>
+                                {% endif %}
+                            {% endif %}
+                        </div>
+                    </div>
+                    {% if is_admin %}
+                    <p class="small text-muted" id="saldoGroup">Saldo saat ini: <span id="saldoTampil">-</span></p>
+                    {% endif %}
+
+                    <input type="hidden" name="jenis_simpanan" value="Manasuka">
+                    <div class="mb-3">
+                        <label class="form-label">Jumlah (Rp)</label>
+                        <input type="text" name="jumlah" id="inputJumlah" class="form-control" required
+                               placeholder="Contoh: 500000" oninput="formatRupiah(this)">
+                    </div>
+                    <button type="submit" class="btn btn-success w-100" {% if not is_admin and anggota|length == 0 %}disabled{% endif %}>
+                        <i class="fas fa-paper-plane me-1"></i>Tambah ke saldo
+                    </button>
+                </form>
+                {% if not is_admin and anggota|length == 0 %}
+                <div class="alert alert-danger mt-3 mb-0">
+                    <i class="fas fa-triangle-exclamation me-1"></i>
+                    Akun kamu belum dihubungkan ke anggota. Minta admin untuk meng-assign akun ke data anggota.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabel Riwayat Simpanan -->
+    <div class="col-md-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-list me-2 text-success"></i>Saldo Simpanan per Anggota</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>No</th>
+                                <th>No Anggota</th>
+                                <th>Nama</th>
+                                <th>Total Saldo</th>
+                                {% if is_admin %}<th>Aksi</th>{% endif %}
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for s in simpanan %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td><span class="badge bg-info">{{ s['no_anggota'] }}</span></td>
+                                <td class="fw-bold">{{ s['nama_anggota'] }}</td>
+                                <td class="text-success fw-bold">Rp {{ "{:,.0f}".format(s['jumlah']|float) }}</td>
+                                {% if is_admin %}
+                                <td>
+                                    <form action="/simpanan/hapus/{{ s['id_anggota'] }}" method="POST" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-sm btn-danger"
+                                                onclick="return confirm('Hapus saldo simpanan anggota ini?')">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                                {% endif %}
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Tampilkan saldo saat memilih anggota
+const selectAnggota = document.getElementById('selectAnggota');
+if (selectAnggota) selectAnggota.addEventListener('change', function() {
+    const idAnggota = this.value;
+    if (idAnggota) {
+        fetch(`/simpanan/saldo/${idAnggota}`)
+            .then(r => r.json())
+            .then(data => {
+                document.getElementById('saldoTampil').textContent = 'Rp ' + data.saldo.toLocaleString('id-ID');
+            });
+    }
+});
+
+// Format Rupiah saat input
+function formatRupiah(input) {
+    let value = input.value.replace(/\D/g, '');
+    input.value = value ? parseInt(value).toLocaleString('id-ID') : '';
+}
+
+</script>
+{% endblock %}

@@ -1,0 +1,120 @@
+{% extends "base.html" %}
+{% block title %}Laporan - Koperasi{% endblock %}
+{% block content %}
+<div class="row g-4">
+    <!-- Export Simpanan -->
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-success text-white">
+                <h5 class="mb-0"><i class="fas fa-file-excel me-2"></i>Export Laporan Simpanan</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Total {{ simpanan|length }} saldo simpanan (per anggota) tercatat.</p>
+                {% if is_admin %}
+                    <a href="/export/simpanan" class="btn btn-success">
+                        <i class="fas fa-download me-1"></i>Download Excel Simpanan
+                    </a>
+                {% else %}
+                    <div class="alert alert-info mb-0">
+                        <i class="fas fa-circle-info me-1"></i>
+                        Download Excel hanya tersedia untuk admin.
+                    </div>
+                {% endif %}
+                <hr>
+                <h6>Total simpanan:</h6>
+                <p class="fw-bold text-success mb-0">Rp {{ "{:,.0f}".format(simpanan | map(attribute='total_simpanan') | map('float') | sum) }}</p>
+            </div>
+        </div>
+    </div>
+
+    <!-- Export Pinjaman -->
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="fas fa-file-excel me-2"></i>Export Laporan Pinjaman</h5>
+            </div>
+            <div class="card-body">
+                <p class="text-muted">Total {{ pinjaman|length }} saldo pinjaman (per anggota) tercatat.</p>
+                {% if is_admin %}
+                    <a href="/export/pinjaman" class="btn btn-warning text-dark">
+                        <i class="fas fa-download me-1"></i>Download Excel Pinjaman
+                    </a>
+                {% else %}
+                    <div class="alert alert-info mb-0">
+                        <i class="fas fa-circle-info me-1"></i>
+                        Download Excel hanya tersedia untuk admin.
+                    </div>
+                {% endif %}
+                <hr>
+                <h6>Total sisa pinjaman (aktif):</h6>
+                <p class="fw-bold text-danger mb-0">Rp {{ "{:,.0f}".format(pinjaman | selectattr('status', 'equalto', 'Disetujui') | map(attribute='sisa_pinjaman') | map('float') | sum) }}</p>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Export Laporan Terpadu -->
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-header bg-primary text-white">
+        <h5 class="mb-0"><i class="fas fa-file-excel me-2"></i>Export Laporan Terpadu (Pinjaman + Simpanan)</h5>
+    </div>
+    <div class="card-body">
+        <p class="text-muted mb-3">
+            Excel berisi tabel Pinjaman, tabel Simpanan, serta ringkasan SHU Pinjaman (bunga yang sudah dibayar, dialokasikan 65% untuk anggota).
+        </p>
+        {% if is_admin %}
+            <a href="/export/laporan-terpadu" class="btn btn-primary w-100">
+                <i class="fas fa-download me-1"></i>Download Excel Terpadu
+            </a>
+        {% else %}
+            <div class="alert alert-info mb-0">
+                <i class="fas fa-circle-info me-1"></i>
+                Download Excel hanya tersedia untuk admin.
+            </div>
+        {% endif %}
+    </div>
+</div>
+
+<!-- Laporan Per Anggota -->
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="fas fa-users me-2 text-primary"></i>Laporan Per Anggota</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>No</th>
+                        <th>No Anggota</th>
+                        <th>Nama</th>
+                        <th>Total Simpanan</th>
+                        <th>Sisa Pinjaman</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for a in anggota %}
+                    {% set simpanan_a = simpanan | selectattr('id_anggota', 'equalto', a['id_anggota']) | list %}
+                    {% set pinjaman_a = pinjaman | selectattr('id_anggota', 'equalto', a['id_anggota']) | list %}
+                    {% set total_sim = simpanan_a | map(attribute='total_simpanan') | map('float') | sum %}
+                    {% set sisa_pin = pinjaman_a | selectattr('status', 'equalto', 'Disetujui') | map(attribute='sisa_pinjaman') | map('float') | sum %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td><span class="badge bg-info">{{ a['no_anggota'] }}</span></td>
+                        <td class="fw-bold">{{ a['nama'] }}</td>
+                        <td class="text-success fw-bold">Rp {{ "{:,.0f}".format(total_sim) }}</td>
+                        <td class="text-danger fw-bold">Rp {{ "{:,.0f}".format(sisa_pin) }}</td>
+                        <td>
+                            <a href="/laporan/anggota/{{ a['id_anggota'] }}" class="btn btn-sm btn-primary">
+                                <i class="fas fa-file-alt me-1"></i>Detail
+                            </a>
+                        </td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endblock %}

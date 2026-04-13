@@ -1,0 +1,138 @@
+/* ──────────────────────────────────────────
+   KOPERASI - Custom Styles
+   ────────────────────────────────────────── */
+
+/* Layout */
+.wrapper {
+    display: flex;
+    width: 100%;
+}
+
+#sidebar {
+    min-width: 260px;
+    max-width: 260px;
+    min-height: 100vh;
+    transition: all 0.3s;
+    position: fixed;
+    top: 0;
+    left: 0;
+    z-index: 1000;
+}
+
+#sidebar.active {
+    margin-left: -260px;
+}
+
+#content {
+    width: 100%;
+    margin-left: 260px;
+    transition: all 0.3s;
+}
+
+#content.active {
+    margin-left: 0;
+}
+
+/* Sidebar */
+.sidebar-header {
+    border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+#sidebar ul.components {
+    padding: 20px 0;
+}
+
+#sidebar ul li {
+    border-bottom: 1px solid rgba(255,255,255,0.05);
+}
+
+#sidebar ul li a {
+    padding: 12px 25px;
+    display: block;
+    color: rgba(255,255,255,0.7);
+    text-decoration: none;
+    transition: all 0.3s;
+}
+
+#sidebar ul li a:hover {
+    color: #fff;
+    background: rgba(255,255,255,0.1);
+    padding-left: 30px;
+}
+
+#sidebar ul li.active a {
+    color: #fff;
+    background: rgba(13, 110, 253, 0.3);
+    border-left: 4px solid #0d6efd;
+}
+
+/* Icon boxes */
+.icon-box {
+    width: 60px;
+    height: 60px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+/* Card hover */
+.card {
+    transition: transform 0.2s;
+}
+
+.card:hover {
+    transform: translateY(-2px);
+}
+
+/* Table */
+.table th {
+    font-weight: 600;
+    font-size: 0.85rem;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.table-responsive {
+    max-height: 330px; /* sekitar 6 baris data + header */
+    overflow-y: auto;
+}
+
+.table-responsive thead th {
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    background: #f8f9fa;
+}
+
+/* Badge */
+.badge {
+    font-size: 0.8rem;
+    padding: 5px 10px;
+}
+
+/* Print */
+@media print {
+    #sidebar, .navbar, .d-print-none {
+        display: none !important;
+    }
+    #content {
+        margin-left: 0 !important;
+    }
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    #sidebar {
+        margin-left: -260px;
+    }
+    #sidebar.active {
+        margin-left: 0;
+    }
+    #content {
+        margin-left: 0;
+    }
+    #content.active {
+        margin-left: 0;
+    }
+}

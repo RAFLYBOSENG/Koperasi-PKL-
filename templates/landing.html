@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Selamat Datang - Koperasi</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
+    <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
+    <style>
+        .hero-landing {
+            min-height: 88vh;
+            background-image: linear-gradient(135deg, rgba(13, 27, 42, 0.82), rgba(30, 58, 95, 0.75)),
+                url('https://www.rukita.co/stories/wp-content/uploads/2022/10/kota-banda-neira.jpeg');
+            background-size: cover;
+            background-position: center;
+            color: #fff;
+        }
+        .section-alt { background: #f8fafc; }
+        .stat-card { border-radius: 0.75rem; border: none; box-shadow: 0 0.25rem 1rem rgba(0,0,0,.06); }
+        .simulasi-box { max-width: 520px; }
+    </style>
+</head>
+<body class="bg-white">
+    <div class="container pt-3">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                <div class="alert alert-{{ category }} alert-dismissible fade show mb-2">
+                    {{ message }}
+                    <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+                </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+    <!-- 1. Hero -->
+    <header class="hero-landing d-flex align-items-center">
+        <div class="container py-5">
+            <div class="row align-items-center">
+                <div class="col-lg-8">
+                    <p class="text-uppercase small fw-semibold text-white-50 mb-2">Selamat datang di portal resmi</p>
+                    <h1 class="display-5 fw-bold mb-3">Membangun Kesejahteraan Bersama di Koperasi Kami</h1>
+                    <p class="lead text-white-75 mb-4">
+                        Solusi finansial mudah, aman, dan amanah untuk anggota—kelola simpanan dan pinjaman dalam satu sistem terintegrasi.
+                    </p>
+                    <div class="d-flex flex-wrap gap-2">
+                        <a href="{{ url_for('login') }}" class="btn btn-light btn-lg px-4 shadow-sm">
+                            <i class="fas fa-right-to-bracket me-2"></i>Login portal anggota
+                        </a>
+                        <a href="#layanan" class="btn btn-outline-light btn-lg px-4">Pelajari layanan</a>
+                    </div>
+                    <p class="small text-white-50 mt-3 mb-0">
+                        <i class="fas fa-user-plus me-1"></i><strong>Daftar jadi anggota:</strong> hubungi pengurus koperasi atau admin untuk pencatatan data—setelah terdaftar, Anda akan mendapat akun untuk mengakses portal ini.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- 2. Statistik (data dari aplikasi) -->
+    <section class="py-5 border-bottom">
+        <div class="container">
+            <h2 class="h4 fw-bold text-center mb-2">Transparansi singkat</h2>
+            <p class="text-muted text-center small mb-4">Angka di bawah diambil langsung dari data yang tercatat di sistem (simpanan yang disetujui &amp; pinjaman aktif).</p>
+            <div class="row g-4 justify-content-center">
+                <div class="col-md-4">
+                    <div class="card stat-card h-100 text-center p-4">
+                        <div class="text-primary mb-2"><i class="fas fa-users fa-2x"></i></div>
+                        <h3 class="fw-bold mb-1">{{ n_anggota }}</h3>
+                        <p class="text-muted small mb-0">Anggota terdaftar</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card stat-card h-100 text-center p-4">
+                        <div class="text-warning mb-2"><i class="fas fa-hand-holding-dollar fa-2x"></i></div>
+                        <h3 class="fw-bold mb-1">Rp {{ "{:,.0f}".format(total_pinjaman_disalurkan) }}</h3>
+                        <p class="text-muted small mb-0">Total pinjaman terdisalurkan (status disetujui)</p>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card stat-card h-100 text-center p-4">
+                        <div class="text-success mb-2"><i class="fas fa-chart-pie fa-2x"></i></div>
+                        <h3 class="fw-bold mb-1">Rp {{ "{:,.0f}".format(shu_estimasi_ilustratif) }}</h3>
+                        <p class="text-muted small mb-0">Estimasi SHU (ilustrasi ±8% dari total simpanan disetujui; bukan laporan resmi)</p>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 3. Layanan -->
+    <section id="layanan" class="py-5 section-alt">
+        <div class="container">
+            <h2 class="h4 fw-bold text-center mb-4">Layanan utama</h2>
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h3 class="h6 fw-bold text-success"><i class="fas fa-piggy-bank me-2"></i>Simpanan</h3>
+                            <p class="small text-muted mb-0">
+                                Di sistem ini tercatat jenis simpanan: <strong>Manasuka</strong>, <strong>Hari Raya</strong>, dan <strong>Pendidikan</strong>.
+                                Anggota dapat mengajukan setoran; admin mengonfirmasi sebelum masuk ke saldo resmi.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h3 class="h6 fw-bold text-warning"><i class="fas fa-hand-holding-dollar me-2"></i>Pinjaman</h3>
+                            <p class="small text-muted mb-0">
+                                Anggota dapat memilih tenor <strong>1-24 bulan</strong> sesuai kebutuhan. Bunga otomatis:
+                                <strong>1-3 bln: 2%</strong>, <strong>4-12 bln: 1.5%</strong>, <strong>13-24 bln: 1%</strong>.
+                                Pengajuan tetap melalui persetujuan admin.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card border-0 shadow-sm h-100">
+                        <div class="card-body">
+                            <h3 class="h6 fw-bold text-secondary"><i class="fas fa-store me-2"></i>Unit usaha</h3>
+                            <p class="small text-muted mb-0">
+                                Modul ini fokus pada administrasi simpanan &amp; pinjaman. Jika koperasi Anda punya kantin/mini market, data dapat dikembangkan terpisah di fase berikutnya.
+                            </p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 4. Keunggulan -->
+    <section class="py-5">
+        <div class="container">
+            <h2 class="h4 fw-bold text-center mb-4">Mengapa melalui koperasi?</h2>
+            <div class="row g-3">
+                <div class="col-md-6 col-lg-3">
+                    <div class="d-flex gap-3">
+                        <span class="text-primary"><i class="fas fa-percent fa-lg"></i></span>
+                        <div>
+                            <strong class="d-block small">Bunga kompetitif</strong>
+                            <span class="small text-muted">Skema jelas di sistem, proses kekeluargaan.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <div class="d-flex gap-3">
+                        <span class="text-primary"><i class="fas fa-money-check-dollar fa-lg"></i></span>
+                        <div>
+                            <strong class="d-block small">Potong gaji (opsional)</strong>
+                            <span class="small text-muted">Bisa disesuaikan kebijakan kantor—dicatat lewat admin.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <div class="d-flex gap-3">
+                        <span class="text-primary"><i class="fas fa-bolt fa-lg"></i></span>
+                        <div>
+                            <strong class="d-block small">Proses terpantau</strong>
+                            <span class="small text-muted">Status pengajuan simpanan/pinjaman terlihat di portal.</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-6 col-lg-3">
+                    <div class="d-flex gap-3">
+                        <span class="text-primary"><i class="fas fa-hand-holding-heart fa-lg"></i></span>
+                        <div>
+                            <strong class="d-block small">SHU &amp; transparansi</strong>
+                            <span class="small text-muted">Laporan ringkas dan unduh Excel (role admin) dari menu Laporan.</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 5. Download & link penting -->
+    <section class="py-5 section-alt" id="unduhan">
+        <div class="container">
+            <h2 class="h4 fw-bold mb-3">Pusat unduhan &amp; fitur terkait</h2>
+            <ul class="small text-muted mb-0">
+                <li><strong>Export Excel:</strong> setelah login sebagai admin, buka menu <strong>Laporan</strong> untuk mengunduh data simpanan dan pinjaman.</li>
+                <li><strong>Lupa password anggota:</strong> gunakan halaman <a href="{{ url_for('lupa_password') }}">Lupa password</a> dengan memverifikasi nomor anggota.</li>
+                <li><strong>Formulir PDF:</strong> belum terhubung file—silakan gunakan dokumen fisik dari pengurus koperasi jika diperlukan.</li>
+            </ul>
+        </div>
+    </section>
+
+    <!-- Simulasi pinjaman (kalkulator) -->
+    <section class="py-5" id="simulasi">
+        <div class="container">
+            <h2 class="h4 fw-bold mb-3">Simulasi pinjaman (interaktif)</h2>
+            <p class="text-muted small mb-3">Estimasi sama dengan perhitungan di dalam aplikasi—tanpa menyimpan data.</p>
+            <div class="card border-0 shadow-sm simulasi-box">
+                <div class="card-body">
+                    <div class="row g-2 align-items-end">
+                        <div class="col-md-5">
+                            <label class="form-label small mb-1">Tenor (bulan)</label>
+                            <select id="simTenorInput" class="form-select form-select-sm">
+                                <option value="">Pilih tenor</option>
+                                {% for n in range(1, 25) %}
+                                <option value="{{ n }}">{{ n }} bulan</option>
+                                {% endfor %}
+                            </select>
+                            <div class="form-text">Bunga: 1-3 bln 2%, 4-12 bln 1.5%, 13-24 bln 1%.</div>
+                        </div>
+                        <div class="col-md-5">
+                            <label class="form-label small mb-1">Pinjaman (Rp)</label>
+                            <input type="text" id="simPlafon" class="form-control form-control-sm" placeholder="5000000">
+                        </div>
+                        <div class="col-md-2">
+                            <button type="button" class="btn btn-primary btn-sm w-100" id="simBtnHitung">Hitung</button>
+                        </div>
+                    </div>
+                    <div id="simHasil" class="mt-3 small d-none">
+                        <table class="table table-sm table-bordered mb-0">
+                            <tr><td>Bunga</td><td id="simBunga">-</td></tr>
+                            <tr><td>Tenor</td><td id="simTenor">-</td></tr>
+                            <tr><td>Total bayar</td><td id="simTotal" class="fw-bold">-</td></tr>
+                            <tr><td>Cicilan/bulan</td><td id="simCicilan" class="fw-bold text-primary">-</td></tr>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 6. Berita & kegiatan (statis) -->
+    <section class="py-5 section-alt" id="berita">
+        <div class="container">
+            <h2 class="h4 fw-bold mb-4">Berita &amp; kegiatan</h2>
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body">
+                            <span class="badge bg-secondary mb-2">Kegiatan</span>
+                            <h3 class="h6 fw-bold">RAT (Rapat Anggota Tahunan)</h3>
+                            <p class="small text-muted mb-0">Dokumentasi dan jadwal RAT dapat ditampilkan di sini setelah konten disiapkan pengurus.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body">
+                            <span class="badge bg-info text-dark mb-2">Sosial</span>
+                            <h3 class="h6 fw-bold">Pembagian sembako / beasiswa</h3>
+                            <p class="small text-muted mb-0">Informasi program kesejahteraan anggota dapat ditambahkan sebagai pengumuman resmi.</p>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card h-100 border-0 shadow-sm">
+                        <div class="card-body">
+                            <span class="badge bg-success mb-2">Pengumuman</span>
+                            <h3 class="h6 fw-bold">Pembaruan sistem</h3>
+                            <p class="small text-muted mb-0">Portal ini mendukung pengajuan simpanan &amp; pinjaman dengan persetujuan admin.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <!-- 7. FAQ -->
+    <section class="py-5" id="faq">
+        <div class="container">
+            <h2 class="h4 fw-bold mb-3">Pertanyaan umum</h2>
+            <div class="accordion accordion-flush" id="faqAccordion">
+                <div class="accordion-item border rounded mb-2 overflow-hidden">
+                    <h3 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">Bagaimana cara berhenti jadi anggota?</button>
+                    </h3>
+                    <div id="faq1" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                        <div class="accordion-body small text-muted">Pengurangan keanggotaan mengikuti AD/ART koperasi. Silakan ajukan secara tertulis kepada pengurus—proses administrasi dilakukan di luar sistem ini.</div>
+                    </div>
+                </div>
+                <div class="accordion-item border rounded mb-2 overflow-hidden">
+                    <h3 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">Berapa maksimal pinjaman yang bisa saya ambil?</button>
+                    </h3>
+                    <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                        <div class="accordion-body small text-muted">Batas plafon mengacu pada kebijakan koperasi dan kemampuan bayar. Di aplikasi, Anda mengajukan plafon; keputusan akhir oleh admin setelah verifikasi.</div>
+                    </div>
+                </div>
+                <div class="accordion-item border rounded mb-2 overflow-hidden">
+                    <h3 class="accordion-header">
+                        <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq3">Kapan SHU dibagikan?</button>
+                    </h3>
+                    <div id="faq3" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
+                        <div class="accordion-body small text-muted">Jadwal pembagian SHU mengikuti keputusan RAT. Angka estimasi di halaman ini hanya ilustrasi dari data simpanan, bukan jumlah SHU resmi.</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </section>
+
+    <footer class="bg-dark text-white-50 py-4">
+        <div class="container">
+            <div class="row mb-4">
+                <div class="col-lg-6">
+                    <h3 class="h5 text-white mb-2">Pengajuan tambah anggota baru</h3>
+                    <p class="small mb-0">Isi formulir ini, pengurus/admin akan menerima notifikasi di dashboard untuk ditinjau.</p>
+                </div>
+                <div class="col-lg-6 mt-3 mt-lg-0">
+                    <form method="POST" action="{{ url_for('pengajuan_anggota_baru') }}" class="row g-2">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <div class="col-md-6">
+                            <input type="text" name="nama" class="form-control form-control-sm" placeholder="Nama lengkap" required>
+                        </div>
+                        <div class="col-md-6">
+                            <input type="text" name="no_telp" class="form-control form-control-sm" placeholder="No. telepon (opsional)">
+                        </div>
+                        <div class="col-12">
+                            <textarea name="alamat" class="form-control form-control-sm" rows="2" placeholder="Alamat lengkap" required></textarea>
+                        </div>
+                        <div class="col-md-6">
+                            <input type="text" name="penghasilan_bersih" class="form-control form-control-sm" placeholder="Penghasilan bersih / bulan (Rp)" required>
+                        </div>
+                        <div class="col-md-6">
+                            <input type="text" name="cicilan_lain" class="form-control form-control-sm" placeholder="Cicilan lain / bulan (Rp, jika ada)">
+                        </div>
+                        <div class="col-12 d-grid">
+                            <button type="submit" class="btn btn-sm btn-success">
+                                <i class="fas fa-paper-plane me-1"></i>Kirim pengajuan anggota
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            <div class="row align-items-center">
+                <div class="col-md-8 small">
+                    <strong class="text-white">Sistem Informasi Koperasi</strong> — akses data untuk anggota &amp; pengurus.
+                </div>
+                <div class="col-md-4 text-md-end mt-2 mt-md-0">
+                    <a href="{{ url_for('login') }}" class="btn btn-sm btn-outline-light me-2">Login</a>
+                    <a href="{{ url_for('lupa_password') }}" class="btn btn-sm btn-outline-light">Lupa password</a>
+                </div>
+            </div>
+        </div>
+    </footer>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    (function() {
+        function parseRp(s) {
+            return parseInt(String(s).replace(/\D/g, ''), 10) || 0;
+        }
+        document.getElementById('simBtnHitung').addEventListener('click', function() {
+            var tenor = document.getElementById('simTenorInput').value;
+            var plafon = parseRp(document.getElementById('simPlafon').value);
+            if (!plafon) { alert('Isi plafon terlebih dahulu.'); return; }
+            if (!tenor) { alert('Pilih tenor terlebih dahulu.'); return; }
+            fetch('/pinjaman/hitung?tenor=' + encodeURIComponent(tenor) + '&plafon=' + plafon)
+                .then(function(r) { return r.json(); })
+                .then(function(data) {
+                    if (data.error) { alert(data.error); return; }
+                    document.getElementById('simBunga').textContent = data.bunga_persen + '%/bulan';
+                    document.getElementById('simTenor').textContent = data.tenor + ' bulan';
+                    document.getElementById('simTotal').textContent = 'Rp ' + Number(data.total_bayar).toLocaleString('id-ID');
+                    document.getElementById('simCicilan').textContent = 'Rp ' + Number(data.cicilan_per_bulan).toLocaleString('id-ID');
+                    document.getElementById('simHasil').classList.remove('d-none');
+                })
+                .catch(function() { alert('Gagal menghitung. Periksa koneksi atau jalankan ulang aplikasi.'); });
+        });
+    })();
+    </script>
+</body>
+</html>

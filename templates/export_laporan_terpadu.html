@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Export Laporan Terpadu - Koperasi{% endblock %}
+{% block content %}
+<div class="row g-4">
+    <div class="col-md-8 col-lg-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="fas fa-file-excel me-2"></i>Export Laporan Terpadu</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-success">
+                    <div><strong>Anggota ditambahkan:</strong> {{ added }}</div>
+                    <div><strong>Anggota diperbarui:</strong> {{ updated }}</div>
+                </div>
+
+                <p class="text-muted small mb-3">
+                    Excel berisi <strong>2 tabel</strong>: Pinjaman dan Simpanan, sekaligus menampilkan SHU Pinjaman (65% untuk anggota).
+                </p>
+
+                <a href="{{ download_url }}" class="btn btn-warning text-dark w-100">
+                    <i class="fas fa-download me-1"></i>Unduh Excel
+                </a>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

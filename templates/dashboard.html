@@ -1,0 +1,212 @@
+{% extends "base.html" %}
+{% block title %}Dashboard - Koperasi{% endblock %}
+{% block content %}
+{% if is_admin and jumlah_pengajuan_menunggu > 0 %}
+<div class="alert alert-warning d-flex justify-content-between align-items-center mb-4">
+    <div>
+        <i class="fas fa-bell me-2"></i>
+        Ada <strong>{{ jumlah_pengajuan_menunggu }}</strong> pengajuan anggota baru menunggu konfirmasi.
+    </div>
+</div>
+{% endif %}
+
+<div class="row g-4 mb-4">
+    <!-- Total Anggota -->
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <p class="text-muted mb-1">Total Anggota</p>
+                        <h3 class="fw-bold mb-0">{{ total_anggota }}</h3>
+                    </div>
+                    <div class="icon-box bg-primary bg-opacity-10">
+                        <i class="fas fa-users text-primary fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Total Simpanan -->
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <p class="text-muted mb-1">Total Simpanan</p>
+                        <h3 class="fw-bold mb-0">Rp {{ "{:,.0f}".format(total_simpanan) }}</h3>
+                    </div>
+                    <div class="icon-box bg-success bg-opacity-10">
+                        <i class="fas fa-piggy-bank text-success fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Total Pinjaman -->
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <p class="text-muted mb-1">Total Pinjaman Disalurkan</p>
+                        <h3 class="fw-bold mb-0">Rp {{ "{:,.0f}".format(total_pinjaman) }}</h3>
+                    </div>
+                    <div class="icon-box bg-warning bg-opacity-10">
+                        <i class="fas fa-hand-holding-dollar text-warning fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    <!-- Pinjaman Beredar -->
+    <div class="col-md-3">
+        <div class="card border-0 shadow-sm h-100">
+            <div class="card-body">
+                <div class="d-flex justify-content-between align-items-center">
+                    <div>
+                        <p class="text-muted mb-1">Pinjaman Beredar</p>
+                        <h3 class="fw-bold mb-0">Rp {{ "{:,.0f}".format(total_pinjaman_beredar) }}</h3>
+                    </div>
+                    <div class="icon-box bg-danger bg-opacity-10">
+                        <i class="fas fa-clock text-danger fa-2x"></i>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Grafik Simpanan per Jenis -->
+<div class="row g-4 mb-4">
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-chart-pie me-2 text-primary"></i>Simpanan per Jenis</h5>
+            </div>
+            <div class="card-body">
+                <div class="row">
+                    {% for jenis, jumlah in simpanan_per_jenis.items() %}
+                    <div class="col-4 text-center">
+                        <div class="mb-2">
+                            <i class="fas fa-{{ 'heart' if jenis == 'Manasuka' else ('star' if jenis == 'Hari Raya' else 'graduation-cap') }} fa-2x text-{{ 'primary' if jenis == 'Manasuka' else ('warning' if jenis == 'Hari Raya' else 'info') }}"></i>
+                        </div>
+                        <h5 class="fw-bold">{{ jenis }}</h5>
+                        <p class="text-success fw-bold">Rp {{ "{:,.0f}".format(jumlah) }}</p>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-6">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-history me-2 text-primary"></i>Transaksi Terakhir</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 320px; overflow-y: auto;">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Tipe</th>
+                                <th>Tanggal</th>
+                                <th>Anggota</th>
+                                <th>Keterangan</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in transaksi_terakhir %}
+                            <tr>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if t['tipe'] == 'Simpanan' else 'warning' }}">
+                                        {{ t['tipe'] }}
+                                    </span>
+                                </td>
+                                <td>{{ t['tanggal'] }}</td>
+                                <td>{{ t['nama'] }}</td>
+                                <td>{{ t['keterangan'] }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if is_admin %}
+<div class="card border-0 shadow-sm mb-4">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0"><i class="fas fa-user-plus me-2 text-primary"></i>Pengajuan Anggota Baru</h5>
+        <span class="badge bg-warning text-dark">{{ jumlah_pengajuan_menunggu }} menunggu</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Tanggal</th>
+                        <th>Nama</th>
+                        <th>Alamat</th>
+                        <th>No Telp</th>
+                        <th>Penghasilan/Bln</th>
+                        <th>Cicilan lain/Bln</th>
+                        <th>No Anggota</th>
+                        <th>Status</th>
+                        <th>Aksi</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in pengajuan_anggota %}
+                    <tr>
+                        <td>{{ p['tanggal_pengajuan'] }}</td>
+                        <td class="fw-bold">{{ p['nama'] }}</td>
+                        <td>{{ p['alamat'] }}</td>
+                        <td>{{ p['no_telp'] or '-' }}</td>
+                        <td class="text-success small">Rp {{ "{:,.0f}".format((p.get('penghasilan_bersih', '0')|float)) }}</td>
+                        <td class="small">Rp {{ "{:,.0f}".format((p.get('cicilan_lain', '0')|float)) }}</td>
+                        <td>
+                            {% if p.get('no_anggota_dibuat') %}
+                                <span class="badge bg-info">{{ p.get('no_anggota_dibuat') }}</span>
+                            {% else %}
+                                -
+                            {% endif %}
+                        </td>
+                        <td>
+                            <span class="badge bg-{{ 'warning text-dark' if p['status']=='Menunggu' else ('success' if p['status']=='Disetujui' else 'danger') }}">
+                                {{ p['status'] }}
+                            </span>
+                        </td>
+                        <td>
+                            {% if p['status'] == 'Menunggu' %}
+                            <form action="{{ url_for('konfirmasi_pengajuan_anggota', id_pengajuan=p['id_pengajuan']) }}" method="POST" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="btn btn-sm btn-success" onclick="return confirm('Setujui pengajuan ini?')">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                            </form>
+                            <form action="{{ url_for('tolak_pengajuan_anggota', id_pengajuan=p['id_pengajuan']) }}" method="POST" class="d-inline">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Tolak pengajuan ini?')">
+                                    <i class="fas fa-xmark"></i>
+                                </button>
+                            </form>
+                            {% else %}
+                            <span class="text-muted small">Selesai</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="9" class="text-center text-muted py-3">Belum ada pengajuan anggota baru.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+{% endif %}
+{% endblock %}

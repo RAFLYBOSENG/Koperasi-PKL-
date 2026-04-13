@@ -1,0 +1,445 @@
+{% extends "base.html" %}
+{% block title %}Pinjaman - Koperasi{% endblock %}
+{% block content %}
+<div class="row g-4">
+    <!-- Form Pengajuan Pinjaman -->
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-warning text-dark">
+                <h5 class="mb-0"><i class="fas fa-hand-holding-dollar me-2"></i>Pengajuan Pinjaman</h5>
+            </div>
+            <div class="card-body">
+                <form action="/pinjaman/tambah" method="POST" id="formPinjaman">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="mb-3">
+                        <label class="form-label">No Anggota</label>
+                        {% if is_admin %}
+                            <select name="id_anggota" id="selectAnggotaPinjaman" class="form-select" required>
+                                <option value="">-- Pilih Anggota --</option>
+                                {% for a in anggota %}
+                                <option value="{{ a['id_anggota'] }}" data-nama="{{ a['nama'] }}">
+                                    {{ a['no_anggota'] }} - {{ a['nama'] }}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        {% else %}
+                            <input type="hidden" name="id_anggota" id="hiddenIdAnggotaUser" value="{{ anggota[0]['id_anggota'] if anggota|length > 0 else '' }}">
+                            {% if anggota|length > 0 %}
+                                <input type="text" class="form-control" value="{{ anggota[0]['no_anggota'] }} - {{ anggota[0]['nama'] }}" readonly>
+                            {% else %}
+                                <input type="text" class="form-control" value="Akun belum dihubungkan ke anggota" readonly>
+                            {% endif %}
+                        {% endif %}
+                    </div>
+
+                    <!-- Info pinjaman aktif (pengajuan baru tetap boleh) -->
+                    <div class="mb-3 d-none" id="alertTunggakan">
+                        <div class="alert alert-info py-2 px-3 mb-0">
+                            <i class="fas fa-circle-info me-1"></i>
+                            <span id="textTunggakan"></span>
+                        </div>
+                    </div>
+                    <div class="mb-3 d-none" id="alertPlafonMaks">
+                        <div class="alert alert-danger py-2 px-3 mb-0">
+                            <i class="fas fa-triangle-exclamation me-1"></i>
+                            <span id="textPlafonMaks"></span>
+                        </div>
+                    </div>
+
+                    <div class="mb-3">
+                        <label class="form-label">Jenis pinjaman</label>
+                        <select name="jenis_pinjaman" id="selectJenisPinjaman" class="form-select" required>
+                            {% for j in jenis_pinjaman_choices %}
+                            <option value="{{ j }}">{{ j }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Jangka pendek dan panjang dipisah (bunga berbeda), tidak digabung ke satu saldo.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Pinjaman (Rp)</label>
+                        <input type="text" name="plafon" id="inputPlafon" class="form-control" required
+                               placeholder="Contoh: 5000000" oninput="formatRupiah(this); hitungEstimasi();">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tenor (bulan)</label>
+                        <select name="tenor_bulan" id="selectTenor" class="form-select" required>
+                            <option value="">-- Pilih tenor --</option>
+                            {% for n in range(1, 25) %}
+                            <option value="{{ n }}">{{ n }} bulan</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Bunga otomatis: 1-3 bln 2%, 4-12 bln 1.5%, 13-24 bln 1%.</div>
+                    </div>
+                    <div class="mb-3">
+                        <div class="alert alert-light border py-2 mb-0 small">
+                            <strong>DSR otomatis</strong> dari penghasilan bersih anggota (30–40%): plafon maksimal mengikuti
+                            kapasitas cicilan = (penghasilan × DSR) − cicilan lain.
+                        </div>
+                    </div>
+
+                    <!-- Estimasi Pinjaman -->
+                    <div class="card bg-light border-0" id="estimasiPinjaman" style="display:none;">
+                        <div class="card-body py-2">
+                            <table class="table table-sm mb-0">
+                                <tr><td class="text-muted">Bunga</td><td class="fw-bold" id="estBunga">-</td></tr>
+                                <tr><td class="text-muted">Tenor</td><td class="fw-bold" id="estTenor">-</td></tr>
+                                <tr><td class="text-muted">Total Bayar</td><td class="fw-bold text-danger" id="estTotal">-</td></tr>
+                                <tr><td class="text-muted">Cicilan/Bulan</td><td class="fw-bold text-primary" id="estCicilan">-</td></tr>
+                                <tr><td class="text-muted">DSR dipakai</td><td class="fw-bold" id="estDsr">-</td></tr>
+                                <tr><td class="text-muted">Kapasitas Cicilan</td><td class="fw-bold" id="estKapasitas">-</td></tr>
+                                <tr><td class="text-muted">Plafon Maksimal</td><td class="fw-bold text-success" id="estPlafonMaks">-</td></tr>
+                            </table>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-warning text-dark w-100 mt-3" id="btnAjukan" {% if not is_admin and anggota|length == 0 %}disabled{% endif %}>
+                        <i class="fas fa-paper-plane me-1"></i>Ajukan pinjaman
+                    </button>
+                </form>
+                {% if not is_admin and anggota|length == 0 %}
+                <div class="alert alert-danger mt-3 mb-0">
+                    <i class="fas fa-triangle-exclamation me-1"></i>
+                    Akun kamu belum dihubungkan ke anggota. Minta admin untuk meng-assign akun ke data anggota.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabel Data Pinjaman -->
+    <div class="col-md-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-list me-2 text-warning"></i>Data Pinjaman</h5>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>No</th>
+                                <th>Tanggal</th>
+                                <th>Anggota</th>
+                                <th>Jenis</th>
+                                <th>Pinjaman</th>
+                                <th>Tenor</th>
+                                <th>Cicilan/Bln</th>
+                                <th>Sisa</th>
+                                <th>Status</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for p in pinjaman %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td>{{ p['tanggal_pengajuan'] }}</td>
+                                <td>
+                                    <span class="badge bg-info">{{ p['no_anggota'] }}</span><br>
+                                    <small>{{ p['nama_anggota'] }}</small>
+                                </td>
+                                <td>
+                                    <span class="badge bg-primary">{{ p['jenis_pinjaman'] }}</span>
+                                </td>
+                                <td class="fw-bold">Rp {{ "{:,.0f}".format(p['plafon']|float) }}</td>
+                                <td>{{ p['tenor_bulan'] }} bln</td>
+                                <td>Rp {{ "{:,.0f}".format(p['cicilan_per_bulan']|float) }}</td>
+                                <td class="fw-bold text-{{ 'success' if p['sisa_pinjaman'] == '0' else 'danger' }}">
+                                    Rp {{ "{:,.0f}".format(p['sisa_pinjaman']|float) }}
+                                </td>
+                                <td>
+                                    {% if p['status'] == 'Disetujui' %}
+                                    <span class="badge bg-success">Aktif</span>
+                                    {% elif p['status'] == 'Lunas' %}
+                                    <span class="badge bg-secondary">Lunas</span>
+                                    {% elif p['status'] == 'Menunggu' %}
+                                    <span class="badge bg-warning text-dark">Menunggu</span>
+                                    {% elif p['status'] == 'Ditolak' %}
+                                    <span class="badge bg-danger">Ditolak</span>
+                                    {% else %}
+                                    <span class="badge bg-warning">{{ p['status'] }}</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if is_admin %}
+                                        {% if p['status'] == 'Menunggu' %}
+                                            <form action="/pinjaman/konfirmasi/{{ p['id_pinjaman'] }}" method="POST" class="d-inline">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                <button type="submit" class="btn btn-sm btn-success"
+                                                        onclick="return confirm('Setujui pinjaman ini?')" title="Setujui">
+                                                    <i class="fas fa-check"></i>
+                                                </button>
+                                            </form>
+                                            <form action="/pinjaman/tolak/{{ p['id_pinjaman'] }}" method="POST" class="d-inline">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                <button type="submit" class="btn btn-sm btn-warning text-dark"
+                                                        onclick="return confirm('Tolak pinjaman ini?')" title="Tolak">
+                                                    <i class="fas fa-xmark"></i>
+                                                </button>
+                                            </form>
+                                        {% endif %}
+                                        {% if p['status'] == 'Disetujui' and (p['sisa_pinjaman']|float) > 0 %}
+                                        <form action="{{ url_for('angsur_pinjaman', id_pinjaman=p['id_pinjaman']) }}" method="POST" class="d-inline-flex flex-column gap-1" style="max-width:220px;">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                            <input type="text" name="keterangan" class="form-control form-control-sm" placeholder="Keterangan bayar (opsional)">
+                                            <button type="submit" class="btn btn-sm btn-primary" title="Bayar cicilan (admin)">
+                                                <i class="fas fa-money-bill-wave me-1"></i>Bayar (admin)
+                                            </button>
+                                        </form>
+                                        {% endif %}
+                                    {% else %}
+                                        {% if p['status'] == 'Disetujui' and (p['sisa_pinjaman']|float) > 0 %}
+                                        <button type="button" class="btn btn-sm btn-outline-primary btn-ajukan-bayar"
+                                                data-bs-toggle="modal"
+                                                data-bs-target="#modalBayarUser"
+                                                data-id-pinjaman="{{ p['id_pinjaman'] }}"
+                                                data-nama="{{ p['nama_anggota'] }}"
+                                                data-no-anggota="{{ p['no_anggota'] }}">
+                                            <i class="fas fa-money-bill-wave me-1"></i>Ajukan Bayar
+                                        </button>
+                                        {% else %}
+                                        <span class="text-muted small">-</span>
+                                        {% endif %}
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if is_admin and cicilan_menunggu %}
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-light d-flex justify-content-between align-items-center">
+                <h6 class="mb-0"><i class="fas fa-bell me-2 text-warning"></i>Pengajuan Bayar Cicilan Menunggu</h6>
+                <span class="badge bg-warning text-dark">{{ cicilan_menunggu|length }} pengajuan</span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>No</th>
+                                <th>Tanggal</th>
+                                <th>No Anggota</th>
+                                <th>Nama</th>
+                                <th>Jumlah</th>
+                                <th>Metode</th>
+                                <th>Keterangan</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for c in cicilan_menunggu %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td>{{ c['tanggal_pengajuan'] }}</td>
+                                <td><span class="badge bg-info">{{ c['no_anggota'] }}</span></td>
+                                <td>{{ c['nama_anggota'] }}</td>
+                                <td>Rp {{ "{:,.0f}".format(c['jumlah']|float) }}</td>
+                                <td class="small">{{ c.get('metode_pembayaran', '') or '-' }}</td>
+                                <td class="small">{{ c['keterangan'] }}</td>
+                                <td>
+                                    <form action="/pinjaman/cicilan/konfirmasi/{{ c['id_cicilan'] }}" method="POST" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-sm btn-success"
+                                                onclick="return confirm('Setujui pengajuan bayar cicilan ini?')">
+                                            <i class="fas fa-check"></i>
+                                        </button>
+                                    </form>
+                                    <form action="/pinjaman/cicilan/tolak/{{ c['id_cicilan'] }}" method="POST" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-sm btn-danger"
+                                                onclick="return confirm('Tolak pengajuan bayar cicilan ini?')">
+                                            <i class="fas fa-xmark"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+{% if not is_admin %}
+<div class="modal fade" id="modalBayarUser" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h6 class="modal-title">Ajukan pembayaran cicilan</h6>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+            </div>
+            <form id="formAjukanCicilanUser" method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <div class="modal-body">
+                    <p class="small text-muted mb-2">Pilih saluran pembayaran / transfer (akan diverifikasi admin).</p>
+                    <p class="small mb-2">
+                        <span class="badge bg-info" id="modalNoAnggotaBayar">-</span>
+                        <span id="modalNamaBayar" class="fw-semibold ms-1"></span>
+                    </p>
+                    <div class="mb-3">
+                        <label class="form-label">Metode / channel</label>
+                        <select name="metode_pembayaran" class="form-select" required>
+                            {% for m in metode_bayar_choices %}
+                            <option value="{{ m }}">{{ m }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-0">
+                        <label class="form-label">Detail (opsional)</label>
+                        <input type="text" name="detail_pembayaran" class="form-control" placeholder="Mis. BCA a.n. ..., kode bayar Indomaret, nomor Dana">
+                    </div>
+                </div>
+                <div class="modal-footer">
+                    <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
+                    <button type="submit" class="btn btn-primary btn-sm">Kirim pengajuan</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endif %}
+
+<script>
+// Cek tunggakan saat memilih anggota
+const selectAnggotaPinjaman = document.getElementById('selectAnggotaPinjaman');
+if (selectAnggotaPinjaman) selectAnggotaPinjaman.addEventListener('change', function() {
+    const idAnggota = this.value;
+    const alertDiv = document.getElementById('alertTunggakan');
+    const textTunggakan = document.getElementById('textTunggakan');
+
+    if (idAnggota) {
+        fetch(`/pinjaman/cek_tunggakan/${idAnggota}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.ada_tunggakan) {
+                    alertDiv.classList.remove('d-none');
+                    textTunggakan.textContent = `Anggota memiliki ${data.pinjaman_aktif} pinjaman aktif (sisa > 0). Anda tetap dapat mengajukan pinjaman baru; pengajuan akan menunggu konfirmasi admin.`;
+                } else {
+                    alertDiv.classList.add('d-none');
+                }
+            });
+    }
+    hitungEstimasi();
+});
+
+// Untuk user (tanpa select), tetap boleh hitung estimasi saat input berubah
+const inputPlafon = document.getElementById('inputPlafon');
+if (inputPlafon) inputPlafon.addEventListener('input', hitungEstimasi);
+const selectTenor = document.getElementById('selectTenor');
+if (selectTenor) selectTenor.addEventListener('change', hitungEstimasi);
+const selectJenisPinjaman = document.getElementById('selectJenisPinjaman');
+if (selectJenisPinjaman) selectJenisPinjaman.addEventListener('change', hitungEstimasi);
+let plafonMaksAktif = null;
+// Hitung estimasi pinjaman
+function hitungEstimasi() {
+    const tenor = document.getElementById('selectTenor').value;
+    const plafonStr = document.getElementById('inputPlafon').value.replace(/\D/g, '');
+    const plafon = parseInt(plafonStr) || 0;
+    let idAnggota = '';
+    const selectAnggota = document.getElementById('selectAnggotaPinjaman');
+    if (selectAnggota) {
+        idAnggota = selectAnggota.value || '';
+    } else {
+        const hiddenUser = document.getElementById('hiddenIdAnggotaUser');
+        idAnggota = hiddenUser ? hiddenUser.value : '';
+    }
+
+    if (tenor && plafon > 0) {
+        let url = `/pinjaman/hitung?tenor=${tenor}&plafon=${plafon}`;
+        if (idAnggota) {
+            url += `&id_anggota=${idAnggota}`;
+        }
+        const jenisEl = document.getElementById('selectJenisPinjaman');
+        if (jenisEl && jenisEl.value) {
+            url += `&jenis_pinjaman=${encodeURIComponent(jenisEl.value)}`;
+        }
+        fetch(url)
+            .then(r => r.json())
+            .then(data => {
+                if (data.error) {
+                    document.getElementById('estimasiPinjaman').style.display = 'none';
+                    return;
+                }
+                document.getElementById('estBunga').textContent = data.bunga_persen + '%/bulan';
+                document.getElementById('estTenor').textContent = data.tenor + ' bulan';
+                document.getElementById('estTotal').textContent = 'Rp ' + data.total_bayar.toLocaleString('id-ID');
+                document.getElementById('estCicilan').textContent = 'Rp ' + data.cicilan_per_bulan.toLocaleString('id-ID');
+                document.getElementById('estDsr').textContent = data.dsr_persen != null
+                    ? (data.dsr_persen + '%')
+                    : '-';
+                document.getElementById('estKapasitas').textContent = data.kapasitas_cicilan !== null
+                    ? ('Rp ' + data.kapasitas_cicilan.toLocaleString('id-ID'))
+                    : '-';
+                document.getElementById('estPlafonMaks').textContent = data.plafon_maks !== null
+                    ? ('Rp ' + data.plafon_maks.toLocaleString('id-ID'))
+                    : '-';
+                plafonMaksAktif = data.plafon_maks;
+                validasiPlafonInput();
+                document.getElementById('estimasiPinjaman').style.display = 'block';
+            });
+    }
+}
+
+function formatRupiah(input) {
+    let value = input.value.replace(/\D/g, '');
+    input.value = value ? parseInt(value).toLocaleString('id-ID') : '';
+}
+
+function validasiPlafonInput() {
+    const plafon = parseInt((document.getElementById('inputPlafon').value || '').replace(/\D/g, '')) || 0;
+    const btn = document.getElementById('btnAjukan');
+    const alertDiv = document.getElementById('alertPlafonMaks');
+    const text = document.getElementById('textPlafonMaks');
+    if (plafonMaksAktif !== null && plafonMaksAktif > 0 && plafon > plafonMaksAktif) {
+        text.textContent = `Nominal pinjaman melebihi plafon maksimal: Rp ${Math.floor(plafonMaksAktif).toLocaleString('id-ID')}`;
+        alertDiv.classList.remove('d-none');
+        if (btn) btn.disabled = true;
+        return false;
+    }
+    alertDiv.classList.add('d-none');
+    if (btn && !(document.getElementById('hiddenIdAnggotaUser') && !document.getElementById('hiddenIdAnggotaUser').value)) {
+        btn.disabled = false;
+    }
+    return true;
+}
+if (inputPlafon) inputPlafon.addEventListener('input', validasiPlafonInput);
+if (selectTenor) selectTenor.addEventListener('change', validasiPlafonInput);
+
+const formPinjaman = document.getElementById('formPinjaman');
+if (formPinjaman) {
+    formPinjaman.addEventListener('submit', function(e) {
+        if (!validasiPlafonInput()) {
+            e.preventDefault();
+            alert('Pengajuan tidak bisa diproses karena melebihi plafon maksimal.');
+        }
+    });
+}
+
+const tombolAjukanBayar = document.querySelectorAll('.btn-ajukan-bayar');
+const formAjukanCicilanUser = document.getElementById('formAjukanCicilanUser');
+if (tombolAjukanBayar.length && formAjukanCicilanUser) {
+    tombolAjukanBayar.forEach((btn) => {
+        btn.addEventListener('click', function() {
+            const idPinjaman = this.getAttribute('data-id-pinjaman') || '';
+            const nama = this.getAttribute('data-nama') || '';
+            const noAnggota = this.getAttribute('data-no-anggota') || '';
+            formAjukanCicilanUser.action = `/pinjaman/ajukan-cicilan/${idPinjaman}`;
+            document.getElementById('modalNamaBayar').textContent = nama;
+            document.getElementById('modalNoAnggotaBayar').textContent = noAnggota;
+        });
+    });
+}
+</script>
+{% endblock %}

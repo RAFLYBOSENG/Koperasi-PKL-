@@ -1,0 +1,128 @@
+{% extends "base.html" %}
+{% block title %}Manajemen User - Koperasi{% endblock %}
+{% block content %}
+<div class="row g-4">
+    <div class="col-md-5">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-dark text-white">
+                <h5 class="mb-0"><i class="fas fa-user-plus me-2"></i>Buat Akun User</h5>
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('users_tambah') }}" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="mb-3">
+                        <label class="form-label">Username</label>
+                        <input type="text" name="username" class="form-control" required placeholder="contoh: budi">
+                        <div class="form-text">Harus unik.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <input type="password" name="password" class="form-control" required minlength="8" autocomplete="new-password" placeholder="minimal 8 karakter, kombinasi lengkap">
+                        <div class="form-text">
+                            Wajib: huruf besar, huruf kecil, angka, dan simbol (mis. !@#).
+                        </div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Role</label>
+                        <select name="role" class="form-select" required>
+                            <option value="user" selected>User</option>
+                            <option value="admin">Admin</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Anggota (untuk role user)</label>
+                        <select name="id_anggota" class="form-select">
+                            <option value="">-- Tidak dikaitkan (untuk admin) --</option>
+                            {% for a in anggota %}
+                            <option value="{{ a['id_anggota'] }}">{{ a['no_anggota'] }} - {{ a['nama'] }}</option>
+                            {% endfor %}
+                        </select>
+                        <div class="form-text">Jika role = user, pilih 1 anggota agar user hanya melihat data anggota itu.</div>
+                    </div>
+                    <button type="submit" class="btn btn-dark w-100">
+                        <i class="fas fa-save me-1"></i>Simpan Akun
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-md-7">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-users-gear me-2 text-dark"></i>Daftar User</h5>
+                <span class="badge bg-dark">{{ users|length }} akun</span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>No</th>
+                                <th>Username</th>
+                                <th>Role</th>
+                                <th>Anggota</th>
+                                <th>Dibuat</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for u in users %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td class="fw-bold">{{ u['username'] }}</td>
+                                <td>
+                                    <span class="badge bg-{{ 'danger' if u['role']=='admin' else 'secondary' }}">
+                                        {{ 'Admin' if u['role']=='admin' else 'User' }}
+                                    </span>
+                                </td>
+                                <td>
+                                    {% if u.get('id_anggota') %}
+                                        {% set a = anggota_map.get(u.get('id_anggota')) %}
+                                        {% if a %}
+                                            <span class="badge bg-info">{{ a['no_anggota'] }}</span>
+                                            <small class="ms-1">{{ a['nama'] }}</small>
+                                        {% else %}
+                                            <span class="text-danger small">Anggota tidak ditemukan</span>
+                                        {% endif %}
+                                    {% else %}
+                                        <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
+                                <td>{{ u.get('created_at','') }}</td>
+                                <td class="d-flex gap-2">
+                                    <form action="{{ url_for('users_reset_password', id_user=u['id_user']) }}" method="POST" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <input type="password" name="new_password" class="form-control form-control-sm d-inline"
+                                               style="width:160px" placeholder="password baru" required minlength="8" autocomplete="new-password">
+                                        <button class="btn btn-sm btn-outline-primary" type="submit" title="Reset Password">
+                                            <i class="fas fa-key"></i>
+                                        </button>
+                                    </form>
+                                    {% if u['username'] != current_user %}
+                                    <form action="{{ url_for('users_hapus', id_user=u['id_user']) }}" method="POST" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger"
+                                                onclick="return confirm('Hapus user {{ u['username'] }}?')"
+                                                title="Hapus User">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                    {% else %}
+                                    <span class="text-muted small align-self-center">akun aktif</span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="small text-muted mt-2">
+                    Catatan: demi keamanan, password tidak ditampilkan. Admin bisa reset password dari tabel.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

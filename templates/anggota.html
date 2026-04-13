@@ -1,0 +1,145 @@
+{% extends "base.html" %}
+{% block title %}Data Anggota - Koperasi{% endblock %}
+{% block content %}
+<div class="row g-4">
+    <!-- Form Tambah Anggota -->
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-user-plus me-2"></i>Tambah Anggota</h5>
+            </div>
+            <div class="card-body">
+                {% if is_admin %}
+                <form action="/anggota/tambah" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <div class="mb-3">
+                        <label class="form-label">NIK</label>
+                        <input type="text" name="nik" class="form-control" placeholder="16 digit NIK">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nama Lengkap</label>
+                        <input type="text" name="nama" class="form-control" required placeholder="Masukkan nama lengkap">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Alamat</label>
+                        <textarea name="alamat" class="form-control" rows="2" required placeholder="Alamat lengkap"></textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">No. Telepon</label>
+                        <input type="text" name="no_telp" class="form-control" placeholder="08xxxxxxxxxx">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Penghasilan Bersih / Bulan (Rp)</label>
+                        <input type="text" name="penghasilan_bersih" class="form-control" placeholder="Contoh: 5000000" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Cicilan Lain / Bulan (Rp)</label>
+                        <input type="text" name="cicilan_lain" class="form-control" placeholder="Contoh: 500000 (jika ada)">
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">
+                        <i class="fas fa-save me-1"></i>Simpan Anggota
+                    </button>
+                </form>
+                <hr>
+                <form action="{{ url_for('import_anggota_excel') }}" method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <label class="form-label">Upload Excel Anggota (Upsert)</label>
+                    <input type="file" name="file_excel" class="form-control mb-2" accept=".xlsx,.xlsm" required>
+                    <div class="form-text mb-2">Kolom minimal: <code>nik</code> atau <code>no_anggota</code>, disarankan ada <code>nama</code>.</div>
+                    <button type="submit" class="btn btn-outline-primary w-100">
+                        <i class="fas fa-file-import me-1"></i>Import & Auto Update
+                    </button>
+                </form>
+                <hr>
+                <form action="{{ url_for('import_csv_unified') }}" method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <label class="form-label">Import Excel gabungan (anggota + saldo)</label>
+                    <input type="file" name="file" class="form-control mb-2" accept=".xlsx,.xlsm" required>
+                    <div class="form-text mb-2">
+                        Baris 1 = header kolom: <code>id_anggota</code>, <code>nama</code>, <code>nik</code>, <code>alamat</code>, <code>simpanan</code>, <code>pinjaman</code>, <code>tenor</code> — saldo diakumulasi, tenor pinjaman = max. Maks. 2 MB, 500 baris.
+                    </div>
+                    <button type="submit" class="btn btn-outline-success w-100">
+                        <i class="fas fa-file-excel me-1"></i>Unggah &amp; Merge Excel
+                    </button>
+                </form>
+                {% else %}
+                <div class="alert alert-info mb-0">
+                    <i class="fas fa-circle-info me-1"></i>
+                    Akun user hanya dapat melihat data. Penambahan/hapus anggota hanya untuk admin.
+                </div>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+
+    <!-- Tabel Anggota -->
+    <div class="col-md-8">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-users me-2 text-primary"></i>Daftar Anggota</h5>
+                <span class="badge bg-primary">{{ anggota|length }} anggota</span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle" id="tableAnggota">
+                        <thead class="table-light">
+                            <tr>
+                                <th>No</th>
+                                <th>No Anggota</th>
+                                <th>NIK</th>
+                                <th>Nama</th>
+                                <th>Alamat</th>
+                                <th>No Telp</th>
+                                <th>Penghasilan/Bln</th>
+                                <th>Cicilan Lain/Bln</th>
+                                {% if is_admin %}
+                                <th class="text-nowrap" title="DSR otomatis dari penghasilan bersih">DSR</th>
+                                <th class="text-nowrap small" title="(Penghasilan × DSR) − cicilan lain">Kap.&nbsp;cicilan</th>
+                                {% endif %}
+                                <th>Tgl Bergabung</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for a in anggota %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td><span class="badge bg-info">{{ a['no_anggota'] }}</span></td>
+                                <td>{{ a.get('nik', '-') or '-' }}</td>
+                                <td class="fw-bold">{{ a['nama'] }}</td>
+                                <td>{{ a['alamat'] }}</td>
+                                <td>{{ a['no_telp'] }}</td>
+                                <td class="text-success fw-bold">Rp {{ "{:,.0f}".format((a.get('penghasilan_bersih',0)|float)) }}</td>
+                                <td>Rp {{ "{:,.0f}".format((a.get('cicilan_lain',0)|float)) }}</td>
+                                {% if is_admin %}
+                                <td><span class="badge bg-secondary">{{ a['_dsr_persen'] }}%</span></td>
+                                <td class="small">Rp {{ "{:,.0f}".format(a['_kap_cicilan']) }}</td>
+                                {% endif %}
+                                <td>{{ a['tgl_bergabung'] }}</td>
+                                <td>
+                                    <a href="/laporan/anggota/{{ a['id_anggota'] }}" class="btn btn-sm btn-info text-white" title="Lihat Laporan">
+                                        <i class="fas fa-file-alt"></i>
+                                    </a>
+                                    {% if is_admin %}
+                                    <a href="{{ url_for('edit_anggota', id_anggota=a['id_anggota']) }}" class="btn btn-sm btn-warning text-dark" title="Edit">
+                                        <i class="fas fa-pen"></i>
+                                    </a>
+                                    <form action="/anggota/hapus/{{ a['id_anggota'] }}" method="POST" class="d-inline">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-sm btn-danger"
+                                                onclick="return confirm('Hapus anggota ini?')" title="Hapus">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

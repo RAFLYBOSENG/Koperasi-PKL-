@@ -1,0 +1,2 @@
+id_user,username,password_hash,role,id_anggota,created_at
+83b7beac-01a8-4036-b72d-13651ef7c06a,admin,scrypt:32768:8:1$HZUjQyzAm0KqpgmW$556232cc99103619bd2e85eaf5156456329db546dd04a9d4ea0863046dfe62a6eb006514820b66acec61f9a0f86bdbde6f99a58452c1386a9aecf6c0fe06fe32,admin,,2026-04-06
