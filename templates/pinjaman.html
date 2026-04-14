@@ -78,8 +78,7 @@
                     <div class="mb-3">
                         <div class="alert alert-light border py-2 mb-0 small">
                             <strong>DSR otomatis</strong> dari penghasilan bersih anggota (30–40%): plafon maksimal mengikuti
-                            kapasitas cicilan = (penghasilan × DSR) − cicilan lain. Untuk tenor &gt; 12 bulan berlaku
-                            provisi tambahan 2% dari pokok pinjaman.
+                            kapasitas cicilan = (penghasilan × DSR) − cicilan lain.
                         </div>
                     </div>
 
@@ -88,7 +87,6 @@
                         <div class="card-body py-2">
                             <table class="table table-sm mb-0">
                                 <tr><td class="text-muted">Bunga</td><td class="fw-bold" id="estBunga">-</td></tr>
-                                <tr><td class="text-muted">Provisi</td><td class="fw-bold" id="estProvisi">-</td></tr>
                                 <tr><td class="text-muted">Tenor</td><td class="fw-bold" id="estTenor">-</td></tr>
                                 <tr><td class="text-muted">Total Bayar</td><td class="fw-bold text-danger" id="estTotal">-</td></tr>
                                 <tr><td class="text-muted">Cicilan/Bulan</td><td class="fw-bold text-primary" id="estCicilan">-</td></tr>
@@ -424,11 +422,6 @@ function hitungEstimasi() {
                     return;
                 }
                 document.getElementById('estBunga').textContent = data.bunga_persen + '%/bulan';
-                if ((data.provisi_persen || 0) > 0) {
-                    document.getElementById('estProvisi').textContent = data.provisi_persen + '% (Rp ' + Number(data.provisi_nominal || 0).toLocaleString('id-ID') + ')';
-                } else {
-                    document.getElementById('estProvisi').textContent = 'Tidak ada';
-                }
                 document.getElementById('estTenor').textContent = data.tenor + ' bulan';
                 document.getElementById('estTotal').textContent = 'Rp ' + data.total_bayar.toLocaleString('id-ID');
                 document.getElementById('estCicilan').textContent = 'Rp ' + data.cicilan_per_bulan.toLocaleString('id-ID');
