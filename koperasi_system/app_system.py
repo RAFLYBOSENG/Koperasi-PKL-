@@ -2847,6 +2847,6 @@ if __name__ == '__main__':
     print("=" * 50)
     print("  APLIKASI KOPERASI BERBASIS WEB")
     print("  Teknologi: Python Flask + CSV Database")
-    print("  Login : http://localhost:5000")
+    print("  Login : http://localhost:5000/login")
     print("=" * 50)
     app.run(debug=False, host='127.0.0.1', port=5000)
