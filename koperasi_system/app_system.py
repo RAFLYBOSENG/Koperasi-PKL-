@@ -944,8 +944,7 @@ def inject_globals():
 # ══════════════════════════════════════════════
 #  ROUTE: LANDING & AUTH
 # ══════════════════════════════════════════════
-@app.route('/')
-@login_required
+@app.route('/').
 def landing():
     if session.get('user'):
         return redirect(url_for('dashboard'))
