@@ -12,8 +12,16 @@
                 {% if is_admin %}
                 <form action="/anggota/tambah" method="POST">
                     <div class="mb-3">
+                        <label class="form-label">No Anggota (opsional, manual)</label>
+                        <input type="text" name="no_anggota" class="form-control" placeholder="Contoh: AGT-0030">
+                        <div class="form-text">Jika kosong, sistem akan membuat nomor otomatis.</div>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">NIK</label>
-                        <input type="text" name="nik" class="form-control" placeholder="16 digit NIK">
+                        <input type="text" name="nik" class="form-control" placeholder="16 digit NIK"
+                               inputmode="numeric" maxlength="16" pattern="\d{16}"
+                               oninput="this.value=this.value.replace(/\D/g,'').slice(0,16)">
+                        <div class="form-text">Isi 16 digit angka.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Nama Lengkap</label>
@@ -49,16 +57,15 @@
                     </button>
                 </form>
                 <hr>
-                <form action="{{ url_for('import_csv_unified') }}" method="POST" enctype="multipart/form-data">
-                    <label class="form-label">Import CSV gabungan (anggota + saldo)</label>
-                    <input type="file" name="file" class="form-control mb-2" accept=".csv" required>
+                <div>
+                    <label class="form-label">Import gabungan (anggota + saldo)</label>
                     <div class="form-text mb-2">
-                        Header: <code>id_anggota,nama,nik,alamat,simpanan,pinjaman,tenor</code> — saldo diakumulasi, tenor pinjaman = max.
+                        Gunakan file Excel dan lakukan validasi preview sebelum eksekusi import.
                     </div>
-                    <button type="submit" class="btn btn-outline-success w-100">
-                        <i class="fas fa-file-csv me-1"></i>Unggah &amp; Merge CSV
-                    </button>
-                </form>
+                    <a href="{{ url_for('halaman_import_csv_anggota') }}" class="btn btn-outline-success w-100">
+                        <i class="fas fa-file-excel me-1"></i>Buka Import Excel + Preview
+                    </a>
+                </div>
                 {% else %}
                 <div class="alert alert-info mb-0">
                     <i class="fas fa-circle-info me-1"></i>

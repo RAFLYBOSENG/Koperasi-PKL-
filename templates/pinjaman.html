@@ -49,10 +49,10 @@
                         <label class="form-label">Jenis pinjaman</label>
                         <select name="jenis_pinjaman" id="selectJenisPinjaman" class="form-select" required>
                             {% set jenis_labels = {
-                                'Solusi Cepat': 'Solusi Cepat (1-2 bln | 2.0%)',
+                                'Solusi Cepat': 'Solusi Cepat (1-2 bln | 2.0% | maks Rp 3.000.000)',
                                 'Jangka Pendek': 'Jangka Pendek (1-12 bln | 1.5%)',
-                                'Jangka Panjang': 'Jangka Panjang (13-24 bln 0.80% / 36-120 bln 0.75%)',
-                                'Modal Usaha': 'Modal Usaha (1-60 bln | 0.50%)'
+                                'Jangka Panjang': 'Jangka Panjang (13-24 bln 0.80% / 25-120 bln 0.75%)',
+                                'Modal Usaha': 'Modal Usaha (1-120 bln | 0.50%)'
                             } %}
                             {% for j in jenis_pinjaman_choices %}
                             <option value="{{ j }}">{{ jenis_labels.get(j, j) }}</option>
@@ -88,11 +88,12 @@
                             <table class="table table-sm mb-0">
                                 <tr><td class="text-muted">Bunga</td><td class="fw-bold" id="estBunga">-</td></tr>
                                 <tr><td class="text-muted">Tenor</td><td class="fw-bold" id="estTenor">-</td></tr>
+                                <tr><td class="text-muted">Provisi</td><td class="fw-bold" id="estProvisi">-</td></tr>
                                 <tr><td class="text-muted">Total Bayar</td><td class="fw-bold text-danger" id="estTotal">-</td></tr>
                                 <tr><td class="text-muted">Cicilan/Bulan</td><td class="fw-bold text-primary" id="estCicilan">-</td></tr>
                                 <tr><td class="text-muted">DSR dipakai</td><td class="fw-bold" id="estDsr">-</td></tr>
-                                <tr><td class="text-muted">Kapasitas Cicilan</td><td class="fw-bold" id="estKapasitas">-</td></tr>
-                                <tr><td class="text-muted">Plafon Maksimal</td><td class="fw-bold text-success" id="estPlafonMaks">-</td></tr>
+                                <tr><td class="text-muted">Kapasitas Cicilan (kemampuan anggota)</td><td class="fw-bold" id="estKapasitas">-</td></tr>
+                                <tr><td class="text-muted">Plafon Maksimal (batas koperasi berdasar DSR)</td><td class="fw-bold text-success" id="estPlafonMaks">-</td></tr>
                             </table>
                         </div>
                     </div>
@@ -128,6 +129,7 @@
                                 <th>Jenis</th>
                                 <th>Pinjaman</th>
                                 <th>Tenor</th>
+                                <th>Provisi</th>
                                 <th>Cicilan/Bln</th>
                                 <th>Sisa</th>
                                 <th>Status</th>
@@ -148,12 +150,30 @@
                                 </td>
                                 <td class="fw-bold">Rp {{ "{:,.0f}".format(p['plafon']|float) }}</td>
                                 <td>{{ p['tenor_bulan'] }} bln</td>
-                                <td>Rp {{ "{:,.0f}".format(p['cicilan_per_bulan']|float) }}</td>
-                                <td class="fw-bold text-{{ 'success' if p['sisa_pinjaman'] == '0' else 'danger' }}">
+                                <td>
+                                    {% set provisi_nominal = p.get('provisi_nominal', 0)|float %}
+                                    {% if provisi_nominal > 0 %}
+                                    <span class="text-warning fw-semibold">Rp {{ "{:,.0f}".format(provisi_nominal) }}</span>
+                                    {% else %}
+                                    <span class="text-muted">Rp 0</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if p['jenis_pinjaman'] == 'Solusi Cepat' %}
+                                    <span class="text-muted">-</span>
+                                    <br><small class="text-muted">Bayar 1x via admin (bulan 1/2)</small>
+                                    {% else %}
+                                    Rp {{ "{:,.0f}".format(p['cicilan_per_bulan']|float) }}
+                                    <br><small class="text-muted">{{ "{:.2f}".format(p['bunga_persen']|float) }}%/bln</small>
+                                    {% endif %}
+                                </td>
+                                <td class="fw-bold text-{{ 'success' if (p['sisa_pinjaman']|float) <= 0 else 'danger' }}">
                                     Rp {{ "{:,.0f}".format(p['sisa_pinjaman']|float) }}
                                 </td>
                                 <td>
-                                    {% if p['status'] == 'Disetujui' %}
+                                    {% if p['telat_bayar'] %}
+                                    <span class="badge bg-danger">Telat Bayar</span>
+                                    {% elif p['status'] == 'Disetujui' %}
                                     <span class="badge bg-success">Aktif</span>
                                     {% elif p['status'] == 'Lunas' %}
                                     <span class="badge bg-secondary">Lunas</span>
@@ -180,21 +200,30 @@
                                         {% if p['status'] == 'Disetujui' and (p['sisa_pinjaman']|float) > 0 %}
                                         <form action="{{ url_for('angsur_pinjaman', id_pinjaman=p['id_pinjaman']) }}" method="POST" class="d-inline-flex flex-column gap-1" style="max-width:220px;">
                                             <input type="text" name="keterangan" class="form-control form-control-sm" placeholder="Keterangan bayar (opsional)">
-                                            <button type="submit" class="btn btn-sm btn-primary" title="Bayar cicilan (admin)">
-                                                <i class="fas fa-money-bill-wave me-1"></i>Bayar (admin)
-                                            </button>
+                                            <div class="d-flex gap-1">
+                                                <button type="submit" class="btn btn-sm btn-primary flex-fill" title="Bayar cicilan (admin)">
+                                                    <i class="fas fa-money-bill-wave me-1"></i>Bayar (admin)
+                                                </button>
+                                                <button type="submit" formaction="{{ url_for('gagal_bayar_pinjaman', id_pinjaman=p['id_pinjaman']) }}" class="btn btn-sm btn-danger flex-fill" title="Tandai gagal bayar">
+                                                    <i class="fas fa-triangle-exclamation me-1"></i>Gagal Bayar
+                                                </button>
+                                            </div>
                                         </form>
                                         {% endif %}
                                     {% else %}
                                         {% if p['status'] == 'Disetujui' and (p['sisa_pinjaman']|float) > 0 %}
-                                        <button type="button" class="btn btn-sm btn-outline-primary btn-ajukan-bayar"
-                                                data-bs-toggle="modal"
-                                                data-bs-target="#modalBayarUser"
-                                                data-id-pinjaman="{{ p['id_pinjaman'] }}"
-                                                data-nama="{{ p['nama_anggota'] }}"
-                                                data-no-anggota="{{ p['no_anggota'] }}">
-                                            <i class="fas fa-money-bill-wave me-1"></i>Ajukan Bayar
-                                        </button>
+                                            {% if p['jenis_pinjaman'] == 'Solusi Cepat' %}
+                                            <span class="text-muted small">Pembayaran Solusi Cepat hanya via admin.</span>
+                                            {% else %}
+                                            <button type="button" class="btn btn-sm btn-outline-primary btn-ajukan-bayar"
+                                                    data-bs-toggle="modal"
+                                                    data-bs-target="#modalBayarUser"
+                                                    data-id-pinjaman="{{ p['id_pinjaman'] }}"
+                                                    data-nama="{{ p['nama_anggota'] }}"
+                                                    data-no-anggota="{{ p['no_anggota'] }}">
+                                                <i class="fas fa-money-bill-wave me-1"></i>Ajukan Bayar
+                                            </button>
+                                            {% endif %}
                                         {% else %}
                                         <span class="text-muted small">-</span>
                                         {% endif %}
@@ -210,13 +239,59 @@
     </div>
 </div>
 
-{% if is_admin and cicilan_menunggu %}
 <div class="row mt-4">
     <div class="col-12">
         <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <h6 class="mb-0"><i class="fas fa-clock-rotate-left me-2 text-primary"></i>Histori Jenis Pinjaman per Anggota</h6>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-sm align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>No</th>
+                                <th>No Anggota</th>
+                                <th>Nama</th>
+                                <th>Total Pengajuan</th>
+                                <th>Pinjaman Aktif</th>
+                                <th>Jenis Pinjaman Pernah Diambil</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in riwayat_pinjaman_anggota %}
+                            <tr>
+                                <td>{{ loop.index }}</td>
+                                <td><span class="badge bg-info">{{ r['no_anggota'] }}</span></td>
+                                <td>{{ r['nama_anggota'] }}</td>
+                                <td>{{ r['total_pengajuan'] }}</td>
+                                <td>{{ r['total_aktif'] }}</td>
+                                <td>
+                                    {% for jenis in r['jenis_items'] %}
+                                    <span class="badge bg-primary me-1 mb-1">{{ jenis }}</span>
+                                    {% endfor %}
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted">Belum ada histori pinjaman anggota.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if is_admin %}
+<div class="row mt-4">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm" id="cardCicilanMenunggu">
             <div class="card-header bg-light d-flex justify-content-between align-items-center">
                 <h6 class="mb-0"><i class="fas fa-bell me-2 text-warning"></i>Pengajuan Bayar Cicilan Menunggu</h6>
-                <span class="badge bg-warning text-dark">{{ cicilan_menunggu|length }} pengajuan</span>
+                <span class="badge bg-warning text-dark" id="badgeCicilanMenungguCount">{{ cicilan_menunggu|length }} pengajuan</span>
             </div>
             <div class="card-body">
                 <div class="table-responsive">
@@ -233,7 +308,7 @@
                                 <th>Aksi</th>
                             </tr>
                         </thead>
-                        <tbody>
+                        <tbody id="tbodyCicilanMenunggu">
                             {% for c in cicilan_menunggu %}
                             <tr>
                                 <td>{{ loop.index }}</td>
@@ -253,6 +328,10 @@
                                         <i class="fas fa-xmark"></i>
                                     </a>
                                 </td>
+                            </tr>
+                            {% else %}
+                            <tr id="rowCicilanKosong">
+                                <td colspan="8" class="text-center text-muted">Belum ada pengajuan cicilan menunggu.</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -306,19 +385,19 @@
 const LOAN_RULES = {
     'Solusi Cepat': {
         ranges: [{ min: 1, max: 2, bunga: 2.0 }],
-        info: 'Solusi Cepat: tenor 1-2 bulan, bunga flat 2.0%/bulan, tanpa provisi.'
+        info: 'Solusi Cepat: tenor 1-2 bulan, bunga flat 2.0%/bulan, maks Rp 3.000.000, bayar hanya via admin.'
     },
     'Jangka Pendek': {
         ranges: [{ min: 1, max: 12, bunga: 1.5 }],
         info: 'Jangka Pendek: tenor 1-12 bulan, bunga flat 1.5%/bulan, tanpa provisi.'
     },
     'Jangka Panjang': {
-        ranges: [{ min: 13, max: 24, bunga: 0.8 }, { min: 36, max: 120, bunga: 0.75 }],
-        info: 'Jangka Panjang: tenor 13-24 bulan (0.80%) atau 36-120 bulan (0.75%), ditambah provisi 2%. Tenor 25-35 tidak tersedia.'
+        ranges: [{ min: 13, max: 24, bunga: 0.8 }, { min: 25, max: 120, bunga: 0.75 }],
+        info: 'Jangka Panjang: tenor 13-24 bulan (0.80%) atau 25-120 bulan (0.75%), ditambah provisi 2%.'
     },
     'Modal Usaha': {
-        ranges: [{ min: 1, max: 60, bunga: 0.5 }],
-        info: 'Modal Usaha: tenor 1-60 bulan, bunga flat 0.50%/bulan. Jika tenor >12 bulan, ditambah provisi 2%.'
+        ranges: [{ min: 1, max: 120, bunga: 0.5 }],
+        info: 'Modal Usaha: tenor 1-120 bulan, bunga flat 0.50%/bulan. ditambah provisi 2%.'
     }
 };
 
@@ -368,7 +447,13 @@ if (selectAnggotaPinjaman) selectAnggotaPinjaman.addEventListener('change', func
             .then(data => {
                 if (data.ada_tunggakan) {
                     alertDiv.classList.remove('d-none');
-                    textTunggakan.textContent = `Anggota memiliki ${data.pinjaman_aktif} pinjaman aktif (sisa > 0). Anda tetap dapat mengajukan pinjaman baru; pengajuan akan menunggu konfirmasi admin.`;
+                    if (data.ada_telat_bayar) {
+                        textTunggakan.textContent = `Anggota memiliki ${data.pinjaman_aktif} pinjaman aktif, termasuk ${data.pinjaman_telat} yang telat bayar. Pinjaman baru akan ditolak sampai kewajiban lama diselesaikan.`;
+                    } else {
+                        textTunggakan.textContent = data.ada_solusi_cepat_aktif
+                            ? `Anggota memiliki ${data.pinjaman_aktif} pinjaman aktif (sisa > 0). Pengajuan jenis Solusi Cepat baru tidak bisa sampai Solusi Cepat sebelumnya lunas, tetapi jenis pinjaman lain tetap bisa diajukan.`
+                            : `Anggota memiliki ${data.pinjaman_aktif} pinjaman aktif (sisa > 0). Pengajuan pinjaman lain tetap bisa selama lolos kapasitas cicilan dan plafon maksimal.`;
+                    }
                 } else {
                     alertDiv.classList.add('d-none');
                 }
@@ -423,8 +508,16 @@ function hitungEstimasi() {
                 }
                 document.getElementById('estBunga').textContent = data.bunga_persen + '%/bulan';
                 document.getElementById('estTenor').textContent = data.tenor + ' bulan';
+                document.getElementById('estProvisi').textContent = data.provisi_nominal > 0
+                    ? ('Rp ' + data.provisi_nominal.toLocaleString('id-ID') + ' (' + data.provisi_persen.toFixed(2) + '%)')
+                    : 'Rp 0';
                 document.getElementById('estTotal').textContent = 'Rp ' + data.total_bayar.toLocaleString('id-ID');
-                document.getElementById('estCicilan').textContent = 'Rp ' + data.cicilan_per_bulan.toLocaleString('id-ID');
+                const jenisAktif = (jenisEl && jenisEl.value) ? jenisEl.value : '';
+                if (jenisAktif === 'Solusi Cepat') {
+                    document.getElementById('estCicilan').textContent = 'Bayar 1x via admin (bulan 1/2)';
+                } else {
+                    document.getElementById('estCicilan').textContent = 'Rp ' + data.cicilan_per_bulan.toLocaleString('id-ID') + ' (' + data.bunga_persen.toFixed(2) + '%/bln)';
+                }
                 document.getElementById('estDsr').textContent = data.dsr_persen != null
                     ? (data.dsr_persen + '%')
                     : '-';
@@ -489,6 +582,77 @@ if (tombolAjukanBayar.length && formAjukanCicilanUser) {
             document.getElementById('modalNoAnggotaBayar').textContent = noAnggota;
         });
     });
+}
+
+function escapeHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
+function formatRupiahNumber(value) {
+    const n = Number(value || 0);
+    return n.toLocaleString('id-ID');
+}
+
+function renderCicilanMenunggu(items) {
+    const tbody = document.getElementById('tbodyCicilanMenunggu');
+    const badge = document.getElementById('badgeCicilanMenungguCount');
+    if (!tbody || !badge) return;
+
+    badge.textContent = `${items.length} pengajuan`;
+
+    if (!items.length) {
+        tbody.innerHTML = '<tr id="rowCicilanKosong"><td colspan="8" class="text-center text-muted">Belum ada pengajuan cicilan menunggu.</td></tr>';
+        return;
+    }
+
+    tbody.innerHTML = items.map((c, idx) => `
+        <tr>
+            <td>${idx + 1}</td>
+            <td>${escapeHtml(c.tanggal_pengajuan)}</td>
+            <td><span class="badge bg-info">${escapeHtml(c.no_anggota)}</span></td>
+            <td>${escapeHtml(c.nama_anggota)}</td>
+            <td>Rp ${formatRupiahNumber(c.jumlah)}</td>
+            <td class="small">${escapeHtml(c.metode_pembayaran || '-')}</td>
+            <td class="small">${escapeHtml(c.keterangan || '-')}</td>
+            <td>
+                <a href="/pinjaman/cicilan/konfirmasi/${encodeURIComponent(c.id_cicilan)}" class="btn btn-sm btn-success"
+                   onclick="return confirm('Setujui pengajuan bayar cicilan ini?')">
+                    <i class="fas fa-check"></i>
+                </a>
+                <a href="/pinjaman/cicilan/tolak/${encodeURIComponent(c.id_cicilan)}" class="btn btn-sm btn-danger"
+                   onclick="return confirm('Tolak pengajuan bayar cicilan ini?')">
+                    <i class="fas fa-xmark"></i>
+                </a>
+            </td>
+        </tr>
+    `).join('');
+}
+
+async function refreshCicilanMenunggu() {
+    const tbody = document.getElementById('tbodyCicilanMenunggu');
+    if (!tbody) return;
+    try {
+        const res = await fetch('/pinjaman/cicilan/menunggu', { cache: 'no-store' });
+        if (!res.ok) return;
+        const data = await res.json();
+        renderCicilanMenunggu(Array.isArray(data.items) ? data.items : []);
+    } catch (err) {
+        // Ignore fetch errors to avoid interrupting other page scripts.
+    }
+}
+
+if (document.getElementById('tbodyCicilanMenunggu')) {
+    refreshCicilanMenunggu();
+    setInterval(function () {
+        if (document.visibilityState === 'visible') {
+            refreshCicilanMenunggu();
+        }
+    }, 15000);
 }
 
 updatePinjamanRulesUI();

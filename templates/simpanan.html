@@ -33,10 +33,18 @@
                         </div>
                     </div>
                     {% if is_admin %}
-                    <p class="small text-muted" id="saldoGroup">Saldo saat ini: <span id="saldoTampil">-</span></p>
+                    <p class="small text-muted mb-1" id="saldoGroup">Saldo saat ini: <span id="saldoTampil">-</span></p>
+                    <p class="small text-muted">Saldo jenis terpilih: <span id="saldoJenisTampil">-</span></p>
                     {% endif %}
 
-                    <input type="hidden" name="jenis_simpanan" value="Manasuka">
+                    <div class="mb-3">
+                        <label class="form-label">Jenis Simpanan</label>
+                        <select name="jenis_simpanan" id="selectJenisSimpanan" class="form-select" required>
+                            {% for js in jenis_simpanan_choices %}
+                            <option value="{{ js }}">{{ js }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
                     <div class="mb-3">
                         <label class="form-label">Jumlah (Rp)</label>
                         <input type="text" name="jumlah" id="inputJumlah" class="form-control" required
@@ -47,7 +55,7 @@
                     </button>
                 </form>
                 <p class="small text-muted mt-2 mb-0">
-                    Setoran simpanan langsung menambah saldo anggota pada sistem (tanpa proses konfirmasi baris).
+                    Simpanan langsung menambah saldo anggota pada sistem (tanpa proses konfirmasi baris).
                 </p>
                 {% if not is_admin and anggota|length == 0 %}
                 <div class="alert alert-danger mt-3 mb-0">
@@ -67,7 +75,7 @@
             </div>
             <div class="card-body">
                 <p class="small text-muted mb-3">
-                    Tabel menampilkan total saldo aktif per anggota berdasarkan akumulasi seluruh setoran yang tercatat.
+                    Tabel menampilkan total saldo aktif per anggota berdasarkan akumulasi seluruh simpanan yang tercatat.
                 </p>
                 <div class="table-responsive">
                     <table class="table table-hover align-middle">
@@ -76,6 +84,9 @@
                                 <th>No</th>
                                 <th>No Anggota</th>
                                 <th>Nama</th>
+                                <th>Manasuka</th>
+                                <th>Hari Raya</th>
+                                <th>Pendidikan</th>
                                 <th>Total Saldo</th>
                                 {% if is_admin %}<th>Aksi</th>{% endif %}
                             </tr>
@@ -86,6 +97,9 @@
                                 <td>{{ loop.index }}</td>
                                 <td><span class="badge bg-info">{{ s['no_anggota'] }}</span></td>
                                 <td class="fw-bold">{{ s['nama_anggota'] }}</td>
+                                <td>Rp {{ "{:,.0f}".format(s.get('saldo_manasuka', 0)|float) }}</td>
+                                <td>Rp {{ "{:,.0f}".format(s.get('saldo_hari_raya', 0)|float) }}</td>
+                                <td>Rp {{ "{:,.0f}".format(s.get('saldo_pendidikan', 0)|float) }}</td>
                                 <td class="text-success fw-bold">Rp {{ "{:,.0f}".format(s['jumlah']|float) }}</td>
                                 {% if is_admin %}
                                 <td>
@@ -105,19 +119,75 @@
     </div>
 </div>
 
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="fas fa-receipt me-2 text-primary"></i>Riwayat Transaksi Simpanan</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>No</th>
+                        <th>Tanggal</th>
+                        <th>No Anggota</th>
+                        <th>Nama</th>
+                        <th>Jenis</th>
+                        <th>Jumlah</th>
+                        <th>Input Oleh</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in simpanan_transaksi %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td class="small">{{ t.get('tanggal', '-') }}</td>
+                        <td><span class="badge bg-info">{{ t.get('no_anggota', '-') }}</span></td>
+                        <td>{{ t.get('nama_anggota', '-') }}</td>
+                        <td>{{ t.get('jenis_simpanan', 'Manasuka') }}</td>
+                        <td class="text-success fw-bold">Rp {{ "{:,.0f}".format((t.get('jumlah', 0)|float)) }}</td>
+                        <td>{{ t.get('diajukan_oleh', '-') }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="7" class="text-center text-muted py-3">Belum ada transaksi simpanan.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <script>
 // Tampilkan saldo saat memilih anggota
 const selectAnggota = document.getElementById('selectAnggota');
-if (selectAnggota) selectAnggota.addEventListener('change', function() {
-    const idAnggota = this.value;
-    if (idAnggota) {
-        fetch(`/simpanan/saldo/${idAnggota}`)
-            .then(r => r.json())
-            .then(data => {
-                document.getElementById('saldoTampil').textContent = 'Rp ' + data.saldo.toLocaleString('id-ID');
-            });
+const selectJenisSimpanan = document.getElementById('selectJenisSimpanan');
+
+function tampilkanSaldoTerpilih() {
+    const saldoTampil = document.getElementById('saldoTampil');
+    const saldoJenisTampil = document.getElementById('saldoJenisTampil');
+    if (!selectAnggota || !saldoTampil) return;
+    const idAnggota = selectAnggota.value;
+    if (!idAnggota) {
+        saldoTampil.textContent = '-';
+        if (saldoJenisTampil) saldoJenisTampil.textContent = '-';
+        return;
     }
-});
+    const jenis = selectJenisSimpanan ? (selectJenisSimpanan.value || 'Manasuka') : 'Manasuka';
+    fetch(`/simpanan/saldo/${idAnggota}?jenis_simpanan=${encodeURIComponent(jenis)}`)
+        .then(r => r.json())
+        .then(data => {
+            saldoTampil.textContent = 'Rp ' + (data.saldo || 0).toLocaleString('id-ID');
+            if (saldoJenisTampil) {
+                saldoJenisTampil.textContent = `Rp ${(data.saldo_jenis || 0).toLocaleString('id-ID')} (${data.jenis_simpanan || jenis})`;
+            }
+        });
+}
+
+if (selectAnggota) selectAnggota.addEventListener('change', tampilkanSaldoTerpilih);
+if (selectJenisSimpanan) selectJenisSimpanan.addEventListener('change', tampilkanSaldoTerpilih);
+tampilkanSaldoTerpilih();
 
 // Format Rupiah saat input
 function formatRupiah(input) {

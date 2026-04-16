@@ -1,5 +1,6 @@
 import os
 import csv
+import calendar
 import re
 import json
 import uuid
@@ -19,6 +20,7 @@ from koperasi_system.settings import (
     BASE_DIR,
     FILE_ANGGOTA,
     FILE_SIMPANAN,
+    FILE_SIMPANAN_TRANSAKSI,
     FILE_PINJAMAN,
     FILE_PINJAMAN_CICILAN,
     FILE_USERS,
@@ -32,6 +34,7 @@ from koperasi_system.settings import (
     METODE_BAYAR_CHOICES,
     CICILAN_FIELDNAMES,
     SIMPANAN_FIELDNAMES,
+    SIMPANAN_TRANSAKSI_FIELDNAMES,
     PINJAMAN_FIELDNAMES,
     JENIS_IMPORT_CSV,
     IMPORT_PREVIEW_DIR,
@@ -156,6 +159,7 @@ def migrate_csv_to_excel():
     csv_files = {
         'anggota.csv': (FILE_ANGGOTA, ANGGOTA_FIELDNAMES),
         'simpanan.csv': (FILE_SIMPANAN, SIMPANAN_FIELDNAMES),
+        'simpanan_transaksi.csv': (FILE_SIMPANAN_TRANSAKSI, SIMPANAN_TRANSAKSI_FIELDNAMES),
         'pinjaman.csv': (FILE_PINJAMAN, PINJAMAN_FIELDNAMES),
         'pinjaman_cicilan.csv': (FILE_PINJAMAN_CICILAN, CICILAN_FIELDNAMES),
         'users.csv': (FILE_USERS, ['id_user', 'username', 'password_hash', 'role', 'id_anggota', 'created_at']),
@@ -188,6 +192,8 @@ def init_csv():
         tulis_csv(FILE_ANGGOTA, [], ANGGOTA_FIELDNAMES)
     if not os.path.exists(FILE_SIMPANAN):
         tulis_csv(FILE_SIMPANAN, [], SIMPANAN_FIELDNAMES)
+    if not os.path.exists(FILE_SIMPANAN_TRANSAKSI):
+        tulis_csv(FILE_SIMPANAN_TRANSAKSI, [], SIMPANAN_TRANSAKSI_FIELDNAMES)
     if not os.path.exists(FILE_PINJAMAN):
         tulis_csv(FILE_PINJAMAN, [], PINJAMAN_FIELDNAMES)
     if not os.path.exists(FILE_PINJAMAN_CICILAN):
@@ -268,6 +274,8 @@ def migrate_pinjaman_ke_saldo():
             row = {k: (r.get(k) if r.get(k) is not None else '') for k in PINJAMAN_FIELDNAMES}
             if not row.get('id_pinjaman'):
                 row['id_pinjaman'] = str(uuid.uuid4())
+            if not row.get('tenor_awal'):
+                row['tenor_awal'] = row.get('tenor_bulan') or ''
             jenis_raw = (row.get('jenis_pinjaman') or '').strip()
             if not jenis_raw or jenis_raw == JENIS_IMPORT_CSV:
                 try:
@@ -294,8 +302,9 @@ def migrate_pinjaman_ke_saldo():
                 continue
             ag = amap.get(id_a) or {}
             bunga_p = bunga_dari_tenor(ten) if ten > 0 else 0.0
-            total_bayar, _ = hitung_total_bayar_flat(plaf, bunga_p, ten)
-            cic = (total_bayar / ten) if ten > 0 else 0.0
+            total_bayar, _ = hitung_total_bayar_flat(plaf, bunga_p, ten, kategori_pinjaman_dari_tenor(ten))
+            # Hitung cicilan bulanan: cicilan = (p / b) + (p × j%)
+            cic = hitung_cicilan_bulanan(plaf, bunga_p, ten)
             out.append({
                 'id_pinjaman': str(uuid.uuid4()),
                 'id_anggota': id_a,
@@ -303,11 +312,12 @@ def migrate_pinjaman_ke_saldo():
                 'no_anggota': ag.get('no_anggota', ''),
                 'jenis_pinjaman': kategori_pinjaman_dari_tenor(ten),
                 'plafon': str(round(plaf, 2)),
+                'tenor_awal': str(ten),
                 'tenor_bulan': str(ten),
                 'bunga_persen': str(bunga_p),
                 'total_bayar': str(round(total_bayar, 2)),
                 'cicilan_per_bulan': str(round(cic, 2)),
-                'sisa_pinjaman': str(round(total_bayar, 2)),
+                'sisa_pinjaman': str(round(plaf, 2)),
                 'tanggal_pengajuan': '-',
                 'status': 'Disetujui',
                 'tanggal_lunas': '',
@@ -339,8 +349,9 @@ def migrate_pinjaman_ke_saldo():
         plaf = agg_tot[id_a]
         ten = max(agg_tenor.get(id_a, 0), 0)
         bunga_p = bunga_dari_tenor(ten) if ten > 0 else 0.0
-        total_bayar, _ = hitung_total_bayar_flat(plaf, bunga_p, ten)
-        cic = (total_bayar / ten) if ten > 0 else 0.0
+        total_bayar, _ = hitung_total_bayar_flat(plaf, bunga_p, ten, kategori_pinjaman_dari_tenor(ten))
+        # Hitung cicilan bulanan: cicilan = (p / b) + (p × j%)
+        cic = hitung_cicilan_bulanan(plaf, bunga_p, ten)
         out.append({
             'id_pinjaman': str(uuid.uuid4()),
             'id_anggota': id_a,
@@ -348,11 +359,12 @@ def migrate_pinjaman_ke_saldo():
             'no_anggota': ag.get('no_anggota', ''),
             'jenis_pinjaman': kategori_pinjaman_dari_tenor(ten),
             'plafon': str(round(plaf, 2)),
+            'tenor_awal': str(ten),
             'tenor_bulan': str(ten),
             'bunga_persen': str(bunga_p),
             'total_bayar': str(round(total_bayar, 2)),
             'cicilan_per_bulan': str(round(cic, 2)),
-            'sisa_pinjaman': str(round(total_bayar, 2)),
+            'sisa_pinjaman': str(round(plaf, 2)),
             'tanggal_pengajuan': '-',
             'status': 'Disetujui',
             'tanggal_lunas': '',
@@ -406,14 +418,15 @@ def _dedupe_rows_pinjaman(rows):
         except (TypeError, ValueError):
             continue
         bp = float(m.get('bunga_persen') or 0)
-        tb, _ = hitung_total_bayar_flat(plaf, bp, ten)
-        cic = (tb / ten) if ten > 0 else 0.0
+        tb, _ = hitung_total_bayar_flat(plaf, bp, ten, jn)
+        cic = hitung_cicilan_bulanan(plaf, bp, ten)
         m['plafon'] = str(round(plaf, 2))
+        m['tenor_awal'] = str(ten)
         m['tenor_bulan'] = str(ten)
         m['total_bayar'] = str(round(tb, 2))
         m['cicilan_per_bulan'] = str(round(cic, 2))
         if m.get('status') == 'Disetujui':
-            m['sisa_pinjaman'] = str(round(tb, 2))
+            m['sisa_pinjaman'] = str(round(plaf, 2))
     return [merged[k] for k in order]
 
 
@@ -447,19 +460,19 @@ def merge_pinjaman_akumulasi(
         plaf = float(r.get('plafon') or 0) + tambah_pinjaman
         ten = max(int(float(r.get('tenor_bulan') or 0)), tenor_baru)
         bp = float(r.get('bunga_persen') or 0)
-        tb, _ = hitung_total_bayar_flat(plaf, bp, ten)
-        cic = (tb / ten) if ten > 0 else 0.0
+        tb, _ = hitung_total_bayar_flat(plaf, bp, ten, jenis_key)
+        cic = hitung_cicilan_bulanan(plaf, bp, ten)
         r['plafon'] = str(round(plaf, 2))
         r['tenor_bulan'] = str(ten)
         r['total_bayar'] = str(round(tb, 2))
         r['cicilan_per_bulan'] = str(round(cic, 2))
         if r.get('status') == 'Disetujui':
-            r['sisa_pinjaman'] = str(round(tb, 2))
+            r['sisa_pinjaman'] = str(round(plaf, 2))
         return
     bp = bunga_dari_tenor(tenor_baru) if tenor_baru > 0 else 0.0
     plaf = tambah_pinjaman
-    tb, _ = hitung_total_bayar_flat(plaf, bp, tenor_baru)
-    cic = (tb / tenor_baru) if tenor_baru > 0 else 0.0
+    tb, _ = hitung_total_bayar_flat(plaf, bp, tenor_baru, jenis_key)
+    cic = hitung_cicilan_bulanan(plaf, bp, tenor_baru)
     pinjaman_rows.append({
         'id_pinjaman': str(uuid.uuid4()),
         'id_anggota': id_anggota,
@@ -467,11 +480,12 @@ def merge_pinjaman_akumulasi(
         'no_anggota': '',
         'jenis_pinjaman': jenis_key,
         'plafon': str(round(plaf, 2)),
+        'tenor_awal': str(tenor_baru),
         'tenor_bulan': str(tenor_baru),
         'bunga_persen': str(bp),
         'total_bayar': str(round(tb, 2)),
         'cicilan_per_bulan': str(round(cic, 2)),
-        'sisa_pinjaman': str(round(tb, 2)),
+        'sisa_pinjaman': str(round(plaf, 2)),
         'tanggal_pengajuan': datetime.now().strftime('%Y-%m-%d'),
         'status': 'Disetujui',
         'tanggal_lunas': '',
@@ -480,7 +494,7 @@ def merge_pinjaman_akumulasi(
 
 def merge_pinjaman_sama_anggota(pinjaman_rows: list, id_pinjaman_baru: str, id_anggota: str) -> None:
     """Merge pinjaman yang baru disetujui dengan pinjaman existing dari anggota sama.
-    Gabungkan plafon & cicilan, gunakan tenor terpanjang, hapus yang lama."""
+    Gabungkan plafon dengan pinjaman baru, lalu pakai tenor dan bunga dari pinjaman terbaru."""
     pinjaman_baru = None
     pinjaman_existing = None
     idx_existing = -1
@@ -514,27 +528,27 @@ def merge_pinjaman_sama_anggota(pinjaman_rows: list, id_pinjaman_baru: str, id_a
             cic_baru = float(pinjaman_baru.get('cicilan_per_bulan') or 0)
             cic_existing = float(pinjaman_existing.get('cicilan_per_bulan') or 0)
             ten_baru = int(float(pinjaman_baru.get('tenor_bulan') or 0))
-            ten_existing = int(float(pinjaman_existing.get('tenor_bulan') or 0))
-            bp = float(pinjaman_existing.get('bunga_persen') or 0)
+            bp = float(pinjaman_baru.get('bunga_persen') or 0)
 
             # Gabung plafon
             plaf_merged = plaf_baru + plaf_existing
 
-            # Gunakan tenor terpanjang
-            ten_merged = max(ten_baru, ten_existing)
+            # Gunakan tenor terbaru dari pinjaman baru.
+            ten_merged = ten_baru
 
-            # Total cicilan gabungan tetap skema flat tanpa menambahkan provisi ke cicilan.
-            tb_merged = hitung_total_bayar_tanpa_provisi(plaf_merged, bp, ten_merged)
+            # Total kewajiban mengikuti tenor terbaru, bukan tenor gabungan.
+            tb_merged = hitung_total_bayar_tanpa_provisi(plaf_merged, bp, ten_merged, jenis_baru)
 
             # Hitung cicilan merged
-            cic_merged = (tb_merged / ten_merged) if ten_merged > 0 else 0.0
+            cic_merged = hitung_cicilan_bulanan(plaf_merged, bp, ten_merged)
 
             # Update pinjaman existing dengan data merged
             pinjaman_existing['plafon'] = str(round(plaf_merged, 2))
             pinjaman_existing['tenor_bulan'] = str(ten_merged)
             pinjaman_existing['total_bayar'] = str(round(tb_merged, 2))
             pinjaman_existing['cicilan_per_bulan'] = str(round(cic_merged, 2))
-            pinjaman_existing['sisa_pinjaman'] = str(round(tb_merged, 2))
+            sisa_existing = saldo_pinjaman_aktual(pinjaman_existing)
+            pinjaman_existing['sisa_pinjaman'] = str(round(sisa_existing + plaf_baru, 2))
 
             # Hapus pinjaman baru (karena sudah digabung ke existing)
             pinjaman_rows.pop(pinjaman_rows.index(pinjaman_baru))
@@ -555,11 +569,20 @@ def cicilan_per_bulan_saldo(p: dict) -> float:
             return float(p['cicilan_per_bulan'])
         except (TypeError, ValueError):
             pass
-    tot = float(p.get('sisa_pinjaman') or p.get('total_pinjaman') or 0)
+    tot = saldo_pinjaman_aktual(p)
     ten = int(float(p.get('tenor_bulan') or p.get('tenor') or 0))
     if ten <= 0 or tot <= 0:
         return 0.0
     return tot / ten
+
+
+def tenor_sisa_pinjaman_aktual(p: dict) -> int:
+    """Jumlah tenor tersisa yang tersimpan di data pinjaman."""
+    try:
+        tenor = int(float(p.get('tenor_bulan') or p.get('tenor_awal') or p.get('tenor') or 0))
+    except (TypeError, ValueError):
+        tenor = 0
+    return max(tenor, 0)
 
 
 def enrich_simpanan_untuk_tampilan(simpanan_rows: list, anggota_rows: list) -> list:
@@ -583,6 +606,24 @@ def enrich_simpanan_untuk_tampilan(simpanan_rows: list, anggota_rows: list) -> l
 
 def enrich_pinjaman_untuk_tampilan(pinjaman_rows: list, anggota_rows: list) -> list:
     amap = {a.get('id_anggota'): a for a in anggota_rows}
+    riwayat_jenis_map = {}
+
+    for p in pinjaman_rows:
+        id_a = p.get('id_anggota', '')
+        tenor_raw_hist = p.get('tenor_bulan', p.get('tenor', '0'))
+        try:
+            tenor_norm_hist = int(float(tenor_raw_hist or 0))
+        except (TypeError, ValueError):
+            tenor_norm_hist = 0
+        jenis_hist = (p.get('jenis_pinjaman') or '').strip()
+        if not jenis_hist or jenis_hist == JENIS_IMPORT_CSV:
+            jenis_hist = kategori_pinjaman_dari_tenor(tenor_norm_hist)
+        if not id_a or not jenis_hist:
+            continue
+        riwayat_jenis_map.setdefault(id_a, [])
+        if jenis_hist not in riwayat_jenis_map[id_a]:
+            riwayat_jenis_map[id_a].append(jenis_hist)
+
     out = []
     for p in pinjaman_rows:
         a = amap.get(p.get('id_anggota'), {})
@@ -596,22 +637,31 @@ def enrich_pinjaman_untuk_tampilan(pinjaman_rows: list, anggota_rows: list) -> l
             jenis_raw = kategori_pinjaman_dari_tenor(tenor_norm)
         if p.get('plafon') is not None or p.get('id_pinjaman'):
             plaf = float(p.get('plafon') or 0)
-            sisa = float(p.get('sisa_pinjaman') or 0)
+            sisa = saldo_pinjaman_aktual(p)
             cic = float(p.get('cicilan_per_bulan') or 0) or cicilan_per_bulan_saldo(p)
             st = p.get('status') or 'Menunggu'
+            jatuh_tempo = tanggal_jatuh_tempo_pinjaman(p)
+            tenor_tampil = tenor_sisa_pinjaman_aktual(p)
+            tenor_provisi = int(float(p.get('tenor_awal') or p.get('tenor_bulan') or 0))
+            provisi_nominal = provisi_nominal_pinjaman(jenis_raw, plaf, tenor_provisi)
             out.append({
                 **p,
                 'no_anggota': p.get('no_anggota') or a.get('no_anggota', ''),
                 'nama_anggota': p.get('nama_anggota') or a.get('nama', ''),
                 'plafon': str(plaf),
-                'tenor_bulan': p.get('tenor_bulan', p.get('tenor', '0')),
+                'tenor_bulan': str(max(int(tenor_tampil), 0)),
                 'cicilan_per_bulan': str(round(cic, 2)),
                 'sisa_pinjaman': str(round(sisa, 2)),
                 'status': st,
+                'jatuh_tempo': jatuh_tempo.strftime('%Y-%m-%d') if jatuh_tempo else '',
+                'telat_bayar': pinjaman_telat_bayar_aktual(p),
                 'tanggal_pengajuan': p.get('tanggal_pengajuan') or '-',
                 'id_pinjaman': p.get('id_pinjaman', ''),
                 'id_anggota': p.get('id_anggota', ''),
                 'jenis_pinjaman': jenis_raw,
+                'riwayat_jenis_pinjaman': ', '.join(riwayat_jenis_map.get(p.get('id_anggota', ''), [jenis_raw])),
+                'jenis_simpanan': (p.get('jenis_simpanan') or 'Manasuka').strip() or 'Manasuka',
+                'provisi_nominal': str(round(provisi_nominal, 2)),
             })
             continue
         tot = float(p.get('total_pinjaman') or 0)
@@ -627,8 +677,13 @@ def enrich_pinjaman_untuk_tampilan(pinjaman_rows: list, anggota_rows: list) -> l
             'cicilan_per_bulan': str(round(cic, 2)),
             'sisa_pinjaman': str(round(tot, 2)),
             'status': st,
+            'jatuh_tempo': '',
+            'telat_bayar': False,
             'tanggal_pengajuan': '-',
             'jenis_pinjaman': jenis_raw or 'Saldo',
+            'riwayat_jenis_pinjaman': ', '.join(riwayat_jenis_map.get(p.get('id_anggota', ''), [jenis_raw or 'Saldo'])),
+            'jenis_simpanan': (p.get('jenis_simpanan') or 'Manasuka').strip() or 'Manasuka',
+            'provisi_nominal': '0',
             'id_pinjaman': p.get('id_anggota', ''),
         })
     return out
@@ -676,6 +731,42 @@ def ensure_import_log_schema():
 
 def ensure_import_preview_dir():
     os.makedirs(IMPORT_PREVIEW_DIR, exist_ok=True)
+
+
+def migrate_sisa_pinjaman_aktif_ke_total():
+    """Migrasi data lama: pinjaman aktif memakai sisa pokok (plafon)."""
+    rows = baca_csv(FILE_PINJAMAN)
+    if not rows:
+        return
+    changed = False
+    for r in rows:
+        status = (r.get('status') or '').strip()
+        if status not in ('Menunggu', 'Disetujui'):
+            continue
+        try:
+            plaf = float(r.get('plafon') or r.get('total_pinjaman') or 0)
+        except (TypeError, ValueError):
+            plaf = 0.0
+        if plaf > 0:
+            try:
+                sisa_now = float(r.get('sisa_pinjaman') or 0)
+            except (TypeError, ValueError):
+                sisa_now = 0.0
+            if sisa_now > plaf:
+                r['sisa_pinjaman'] = str(round(plaf, 2))
+                changed = True
+                continue
+        try:
+            sisa = float(r.get('sisa_pinjaman') or 0)
+        except (TypeError, ValueError):
+            sisa = 0.0
+        if sisa > 0:
+            continue
+        if plaf > 0:
+            r['sisa_pinjaman'] = str(round(plaf, 2))
+            changed = True
+    if changed:
+        tulis_csv(FILE_PINJAMAN, rows, PINJAMAN_FIELDNAMES)
 
 
 def ensure_pendaftaran_schema():
@@ -745,6 +836,18 @@ def ensure_simpanan_schema():
     migrate_simpanan_ke_saldo()
 
 
+def ensure_simpanan_transaksi_schema():
+    """Pastikan file transaksi simpanan tersedia dengan skema terbaru."""
+    if not os.path.exists(FILE_SIMPANAN_TRANSAKSI):
+        tulis_csv(FILE_SIMPANAN_TRANSAKSI, [], SIMPANAN_TRANSAKSI_FIELDNAMES)
+        return
+    rows = baca_csv(FILE_SIMPANAN_TRANSAKSI)
+    normalized = []
+    for r in rows:
+        normalized.append({k: (r.get(k) or '') for k in SIMPANAN_TRANSAKSI_FIELDNAMES})
+    tulis_csv(FILE_SIMPANAN_TRANSAKSI, normalized, SIMPANAN_TRANSAKSI_FIELDNAMES)
+
+
 def bunga_dari_tenor(tenor_bulan: int) -> float:
     """Fallback bunga per bulan jika jenis pinjaman tidak ditentukan."""
     if tenor_bulan <= 0:
@@ -765,48 +868,173 @@ def provisi_persen_dari_tenor(tenor_bulan: int) -> float:
     return PROVISI_RATE_LONG_TENOR * 100 if tenor_bulan >= PROVISI_MIN_TENOR_BULAN else 0.0
 
 
-def provisi_nominal_pinjaman(jenis_pinjaman: str, plafon: float, tenor_bulan: int) -> float:
-    """Provisi hanya untuk Jangka Panjang, dipotong saat pencairan setelah ACC admin."""
+def provisi_persen_dari_pinjaman(jenis_pinjaman: str, tenor_bulan: int) -> float:
+    """Provisi per jenis pinjaman.
+
+    - Modal Usaha: selalu 2%
+    - Jangka Panjang: 2% jika tenor >= 13 bulan
+    - Jenis lain: 0%
+    """
     jenis = (jenis_pinjaman or '').strip().lower()
-    if jenis != 'jangka panjang':
-        return 0.0
-    if tenor_bulan < PROVISI_MIN_TENOR_BULAN:
-        return 0.0
+    if jenis == 'modal usaha':
+        return PROVISI_RATE_LONG_TENOR * 100
+    if jenis == 'jangka panjang':
+        return provisi_persen_dari_tenor(tenor_bulan)
+    return 0.0
+
+
+def provisi_nominal_pinjaman(jenis_pinjaman: str, plafon: float, tenor_bulan: int) -> float:
+    """Hitung provisi sesuai jenis pinjaman dan tenor."""
     plafon = max(float(plafon or 0), 0.0)
-    return plafon * PROVISI_RATE_LONG_TENOR
+    return plafon * (provisi_persen_dari_pinjaman(jenis_pinjaman, tenor_bulan) / 100.0)
 
 
-def hitung_total_bayar_flat(plafon: float, bunga_persen_bulanan: float, tenor_bulan: int) -> tuple:
+def hitung_total_bayar_flat(plafon: float, bunga_persen_bulanan: float, tenor_bulan: int, jenis_pinjaman: str = '') -> tuple:
     """Hitung total bayar skema flat bulanan + provisi tenor panjang."""
     if tenor_bulan <= 0:
         return max(float(plafon or 0), 0.0), 0.0
     plafon = max(float(plafon or 0), 0.0)
-    bunga_nominal = plafon * (bunga_persen_bulanan / 100.0) * tenor_bulan
-    provisi_nominal = plafon * (provisi_persen_dari_tenor(tenor_bulan) / 100.0)
+    # Bunga/jasa hanya dihitung pada bulan 1 s.d. n-1; bulan terakhir bebas bunga.
+    bulan_berbunga = max(tenor_bulan - 1, 0)
+    bunga_nominal = plafon * (bunga_persen_bulanan / 100.0) * bulan_berbunga
+    provisi_nominal = plafon * (provisi_persen_dari_pinjaman(jenis_pinjaman, tenor_bulan) / 100.0)
     return plafon + bunga_nominal + provisi_nominal, provisi_nominal
 
 
-def hitung_total_bayar_tanpa_provisi(plafon: float, bunga_persen_bulanan: float, tenor_bulan: int) -> float:
+def hitung_total_bayar_tanpa_provisi(plafon: float, bunga_persen_bulanan: float, tenor_bulan: int, jenis_pinjaman: str = '') -> float:
     """Hitung total bayar skema flat bulanan TANPA provisi (untuk pengajuan awal)."""
-    if tenor_bulan <= 0:
-        return max(float(plafon or 0), 0.0)
-    plafon = max(float(plafon or 0), 0.0)
-    bunga_nominal = plafon * (bunga_persen_bulanan / 100.0) * tenor_bulan
-    return plafon + bunga_nominal
+    total_bayar, _ = hitung_total_bayar_flat(plafon, bunga_persen_bulanan, tenor_bulan, jenis_pinjaman)
+    return total_bayar
 
 
-def apply_provisi_setelah_konfirmasi(plafon: float, tenor_bulan: int) -> float:
+def apply_provisi_setelah_konfirmasi(plafon: float, tenor_bulan: int, jenis_pinjaman: str = '') -> float:
     """Hitung provisi yang diterapkan saat admin mengkonfirmasi pinjaman."""
-    provisi_nominal = plafon * (provisi_persen_dari_tenor(tenor_bulan) / 100.0)
+    provisi_nominal = plafon * (provisi_persen_dari_pinjaman(jenis_pinjaman, tenor_bulan) / 100.0)
     return provisi_nominal
+
+
+def hitung_cicilan_bulanan(plafon: float, bunga_persen_bulanan: float, tenor_bulan: int) -> float:
+    """
+    Hitung cicilan bulanan per formula: cicilan = (p / b) + (p × j%)
+    
+    Keterangan:
+    - p = plafon (pokok pinjaman)
+    - b = tenor (bulan)
+    - j = bunga_persen_bulanan (% per bulan)
+    
+    Contoh: p=15.000.000, b=10, j=1.5%
+    cicilan = (15.000.000 / 10) + (15.000.000 × 1.5%) = 1.500.000 + 225.000 = 1.725.000
+    """
+    if tenor_bulan <= 0:
+        return 0.0
+    plafon = max(float(plafon or 0), 0.0)
+    bunga_persen_bulanan = max(float(bunga_persen_bulanan or 0), 0.0)
+    
+    # cicilan = (p / b) + (p × j%)
+    cicilan_pokok = plafon / tenor_bulan
+    total_bunga = plafon * (bunga_persen_bulanan / 100.0)
+    cicilan = cicilan_pokok + total_bunga
+    
+    return cicilan
+
+
+def nominal_cicilan_aktual(pinjaman: dict) -> float:
+    """Nominal yang benar-benar dibayarkan pada transaksi cicilan berjalan."""
+    sisa = saldo_pinjaman_aktual(pinjaman)
+    jenis = (pinjaman.get('jenis_pinjaman') or '').strip()
+    # Solusi Cepat dibayar sekali melalui admin (bulan ke-1 atau ke-2).
+    if jenis == 'Solusi Cepat':
+        return max(sisa, 0.0)
+    cic = float(pinjaman.get('cicilan_per_bulan') or 0) or cicilan_per_bulan_saldo(pinjaman)
+    if sisa <= 0 or cic <= 0:
+        return 0.0
+    return min(sisa, cic)
+
+
+def saldo_pinjaman_aktual(pinjaman: dict) -> float:
+    """Saldo pinjaman yang dipakai UI dan proses bayar.
+
+    Jika data lama masih menyimpan sisa 0, fallback ke plafon (pokok pinjaman).
+    """
+    try:
+        sisa = max(float(pinjaman.get('sisa_pinjaman') or 0), 0.0)
+    except (TypeError, ValueError):
+        sisa = 0.0
+    if sisa > 0:
+        return sisa
+    status = (pinjaman.get('status') or '').strip()
+    if status in ('Lunas', 'Ditolak'):
+        return 0.0
+    try:
+        total = max(float(pinjaman.get('plafon') or pinjaman.get('total_pinjaman') or 0), 0.0)
+    except (TypeError, ValueError):
+        total = 0.0
+    return total
+
+
+def _parse_tanggal_iso(value: str):
+    value = (value or '').strip()
+    if not value:
+        return None
+    try:
+        return datetime.strptime(value, '%Y-%m-%d').date()
+    except ValueError:
+        return None
+
+
+def _tambah_bulan_ke_tanggal(tanggal_awal, jumlah_bulan: int):
+    if not tanggal_awal:
+        return None
+    jumlah_bulan = max(int(jumlah_bulan or 0), 0)
+    if jumlah_bulan <= 0:
+        return tanggal_awal
+    total_bulan = tanggal_awal.month - 1 + jumlah_bulan
+    year = tanggal_awal.year + (total_bulan // 12)
+    month = (total_bulan % 12) + 1
+    day = min(tanggal_awal.day, calendar.monthrange(year, month)[1])
+    return tanggal_awal.replace(year=year, month=month, day=day)
+
+
+def tanggal_jatuh_tempo_pinjaman(pinjaman: dict):
+    tanggal_pengajuan = _parse_tanggal_iso(pinjaman.get('tanggal_pengajuan'))
+    tenor = int(float(pinjaman.get('tenor_awal') or pinjaman.get('tenor_bulan') or pinjaman.get('tenor') or 0))
+    return _tambah_bulan_ke_tanggal(tanggal_pengajuan, tenor)
+
+
+def pinjaman_telat_bayar_aktual(pinjaman: dict) -> bool:
+    if (pinjaman.get('status') or '').strip() != 'Disetujui':
+        return False
+    if saldo_pinjaman_aktual(pinjaman) <= 0:
+        return False
+    jatuh_tempo = tanggal_jatuh_tempo_pinjaman(pinjaman)
+    if not jatuh_tempo:
+        return False
+    return datetime.now().date() > jatuh_tempo
+
+
+def ada_pinjaman_solusi_cepat_aktif(pinjaman_rows: list, id_anggota: str) -> bool:
+    """Cek apakah anggota masih punya pinjaman Solusi Cepat yang belum lunas."""
+    for p in pinjaman_rows:
+        if p.get('id_anggota') != id_anggota:
+            continue
+        if (p.get('jenis_pinjaman') or '').strip() != 'Solusi Cepat':
+            continue
+        status = (p.get('status') or '').strip()
+        if status in ('Menunggu', 'Disetujui'):
+            return True
+        if saldo_pinjaman_aktual(p) > 0 and status != 'Ditolak':
+            return True
+    return False
 
 
 migrate_simpanan_ke_saldo()
 migrate_pinjaman_ke_saldo()
+migrate_sisa_pinjaman_aktif_ke_total()
 ensure_pinjaman_cicilan_schema()
 ensure_anggota_schema()
 ensure_import_log_schema()
 ensure_import_preview_dir()
+ensure_simpanan_transaksi_schema()
 
 
 def hitung_kapasitas_cicilan(penghasilan_bersih: float, cicilan_lain: float, dsr: float) -> float:
@@ -824,13 +1052,13 @@ def dsr_otomatis_dari_penghasilan(penghasilan_bersih: float) -> float:
     return 0.30
 
 
-def hitung_plafon_maks_anuitas(cicilan_bulanan: float, bunga_persen_bulanan: float, tenor_bulan: int) -> float:
+def hitung_plafon_maks_anuitas(cicilan_bulanan: float, bunga_persen_bulanan: float, tenor_bulan: int, jenis_pinjaman: str = '') -> float:
     n = int(tenor_bulan or 0)
     if n <= 0:
         raise ValueError('Tenor harus lebih dari 0.')
     cicilan_bulanan = max(float(cicilan_bulanan or 0), 0.0)
     i = max(float(bunga_persen_bulanan or 0), 0.0) / 100.0
-    provisi_rate = provisi_persen_dari_tenor(n) / 100.0
+    provisi_rate = provisi_persen_dari_pinjaman(jenis_pinjaman, n) / 100.0
     faktor = (1 + (i * n) + provisi_rate)
     if faktor <= 0:
         return 0.0
@@ -851,6 +1079,16 @@ def info_pinjaman_dsr_anggota(anggota_row: dict) -> dict:
 
 def parse_rupiah_to_float(value):
     return float(str(value or '0').replace(',', '').replace('.', ''))
+
+
+def normalize_nik(value: str) -> str:
+    """Normalisasi NIK: hanya digit, tanpa spasi/simbol."""
+    return re.sub(r'\D', '', str(value or '').strip())
+
+
+def is_valid_nik(value: str) -> bool:
+    """Valid jika NIK tepat 16 digit angka."""
+    return bool(re.fullmatch(r'\d{16}', str(value or '')))
 
 
 def get_user_by_username(username: str):
@@ -945,7 +1183,6 @@ def inject_globals():
 #  ROUTE: LANDING & AUTH
 # ══════════════════════════════════════════════
 @app.route('/')
-@login_required
 def landing():
     if session.get('user'):
         return redirect(url_for('dashboard'))
@@ -1216,13 +1453,13 @@ def bunga_untuk_jenis_pinjaman(jenis: str, tenor_bulan: int) -> float:
     if j == 'Jangka Panjang':
         if 13 <= tenor_bulan <= 24:
             return 0.80
-        if 36 <= tenor_bulan <= 120:
+        if 25 <= tenor_bulan <= 120:
             return 0.75
-        raise ValueError('Tenor Jangka Panjang wajib 13-24 bulan atau 36-120 bulan.')
+        raise ValueError('Tenor Jangka Panjang wajib 13-24 bulan atau 25-120 bulan.')
     if j == 'Modal Usaha':
-        if 1 <= tenor_bulan <= 60:
+        if 1 <= tenor_bulan <= 120:
             return 0.50
-        raise ValueError('Tenor Modal Usaha wajib 1-60 bulan.')
+        raise ValueError('Tenor Modal Usaha wajib 1-120 bulan.')
     if j in JENIS_PINJAMAN:
         return float(JENIS_PINJAMAN[j]['bunga'])
     return bunga_dari_tenor(tenor_bulan)
@@ -1235,36 +1472,97 @@ def bunga_untuk_jenis_pinjaman(jenis: str, tenor_bulan: int) -> float:
 @login_required
 def dashboard():
     ensure_simpanan_schema()
+    ensure_simpanan_transaksi_schema()
     anggota = baca_csv(FILE_ANGGOTA)
     simpanan = baca_csv(FILE_SIMPANAN)
+    simpanan_transaksi = baca_csv(FILE_SIMPANAN_TRANSAKSI)
     pinjaman = baca_csv(FILE_PINJAMAN)
 
     if not is_current_user_admin():
         id_anggota = get_current_user_id_anggota()
         anggota = [a for a in anggota if a.get('id_anggota') == id_anggota]
         simpanan = [s for s in simpanan if s.get('id_anggota') == id_anggota]
+        simpanan_transaksi = [t for t in simpanan_transaksi if t.get('id_anggota') == id_anggota]
         pinjaman = [p for p in pinjaman if p.get('id_anggota') == id_anggota]
 
     total_anggota = len(anggota)
     total_simpanan = sum(float(s.get('total_simpanan') or 0) for s in simpanan)
     pv_aktif = [p for p in pinjaman if p.get('status') == 'Disetujui']
     total_pinjaman = sum(float(p.get('plafon') or 0) for p in pv_aktif)
-    total_pinjaman_beredar = sum(float(p.get('sisa_pinjaman') or 0) for p in pv_aktif)
+    total_pinjaman_beredar = sum(saldo_pinjaman_aktual(p) for p in pv_aktif)
 
-    # Saldo simpanan (skema per anggota; tampilan dashboard mengikuti jenis lama — alokasi ke Manasuka)
+    # Saldo simpanan per jenis dihitung dari transaksi, dengan fallback untuk data lama.
     simpanan_per_jenis = {j: 0.0 for j in JENIS_SIMPANAN}
-    simpanan_per_jenis['Manasuka'] = total_simpanan
+    total_transaksi_simpanan = 0.0
+    for t in simpanan_transaksi:
+        jenis = (t.get('jenis_simpanan') or 'Manasuka').strip() or 'Manasuka'
+        if jenis not in simpanan_per_jenis:
+            jenis = 'Manasuka'
+        try:
+            nominal = float(t.get('jumlah') or 0)
+        except (TypeError, ValueError):
+            nominal = 0.0
+        simpanan_per_jenis[jenis] += nominal
+        total_transaksi_simpanan += nominal
+    if total_simpanan > total_transaksi_simpanan:
+        simpanan_per_jenis['Manasuka'] += (total_simpanan - total_transaksi_simpanan)
 
-    # Ringkasan aktivitas: anggota terbaru
-    anggota_sorted = sorted(anggota, key=lambda x: x.get('tgl_bergabung', ''), reverse=True)
+    # Ringkasan aktivitas: gabungan semua transaksi simpanan, pinjaman, dan cicilan.
     transaksi_terakhir = []
-    for a in anggota_sorted[:6]:
+
+    def append_transaksi(tipe: str, tanggal: str, nama: str, keterangan: str, status: str = ''):
         transaksi_terakhir.append({
-            'tipe': 'Anggota',
-            'tanggal': a.get('tgl_bergabung', '-'),
-            'nama': a.get('nama', ''),
-            'keterangan': f"Terdaftar — {a.get('no_anggota', '')}",
+            'tipe': tipe,
+            'tanggal': tanggal or '-',
+            'nama': nama or '',
+            'keterangan': keterangan,
+            'status': status or '-',
         })
+
+    for t in simpanan_transaksi:
+        append_transaksi(
+            'Simpanan',
+            t.get('tanggal', '-'),
+            t.get('nama_anggota', ''),
+            f"Simpanan {t.get('jenis_simpanan', 'Manasuka')} — Rp {float(t.get('jumlah') or 0):,.0f}",
+            'Disetujui',
+        )
+
+    for p in baca_csv(FILE_PINJAMAN):
+        tanggal_evt = p.get('tanggal_lunas') or p.get('tanggal_pengajuan') or '-'
+        status_evt = p.get('status') or '-'
+        jenis_evt = p.get('jenis_pinjaman') or 'Pinjaman'
+        keterangan_evt = f"{jenis_evt} — Rp {float(p.get('plafon') or 0):,.0f}"
+        if status_evt == 'Menunggu':
+            keterangan_evt = f"Pengajuan {keterangan_evt}"
+        elif status_evt == 'Disetujui':
+            keterangan_evt = f"Pinjaman disetujui {keterangan_evt}"
+        elif status_evt == 'Lunas':
+            keterangan_evt = f"Pinjaman lunas {keterangan_evt}"
+        elif status_evt == 'Ditolak':
+            keterangan_evt = f"Pengajuan ditolak {keterangan_evt}"
+        append_transaksi('Pinjaman', tanggal_evt, p.get('nama_anggota', ''), keterangan_evt, status_evt)
+
+    for c in baca_csv(FILE_PINJAMAN_CICILAN):
+        status_evt = c.get('status') or '-'
+        tanggal_evt = c.get('tanggal_konfirmasi') or c.get('tanggal_pengajuan') or '-'
+        if status_evt == 'Menunggu':
+            label_evt = 'Pengajuan cicilan'
+        elif status_evt == 'Disetujui':
+            label_evt = 'Cicilan diterima'
+        elif status_evt == 'Gagal Bayar':
+            label_evt = 'Cicilan gagal bayar'
+        elif status_evt == 'Ditolak':
+            label_evt = 'Cicilan ditolak'
+        else:
+            label_evt = 'Cicilan'
+        keterangan_evt = f"{label_evt} — Rp {float(c.get('jumlah') or 0):,.0f}"
+        if c.get('metode_pembayaran'):
+            keterangan_evt += f" ({c.get('metode_pembayaran')})"
+        status_tampil = 'Cicilan diterima' if status_evt == 'Disetujui' else status_evt
+        append_transaksi('Cicilan', tanggal_evt, c.get('nama_anggota', ''), keterangan_evt, status_tampil)
+
+    transaksi_terakhir.sort(key=lambda x: x.get('tanggal', ''), reverse=True)
 
     pengajuan_anggota = []
     jumlah_pengajuan_menunggu = 0
@@ -1373,20 +1671,46 @@ def halaman_anggota():
 def tambah_anggota():
     ensure_anggota_schema()
     data = baca_csv(FILE_ANGGOTA)
-    no_anggota = generate_no_anggota_berikutnya(data)
-    id_anggota = str(uuid.uuid4())
+    nik = normalize_nik(request.form.get('nik'))
+    if nik and not is_valid_nik(nik):
+        flash('NIK harus terdiri dari tepat 16 digit angka.', 'danger')
+        return redirect('/anggota')
+    nama = (request.form.get('nama') or '').strip()
+    alamat = (request.form.get('alamat') or '').strip()
+    no_telp = (request.form.get('no_telp') or '').strip()
+    penghasilan_bersih = str(parse_rupiah_to_float(request.form.get('penghasilan_bersih', '0')))
+    cicilan_lain = str(parse_rupiah_to_float(request.form.get('cicilan_lain', '0')))
+    no_anggota = (request.form.get('no_anggota') or '').strip()
+    if not no_anggota:
+        no_anggota = generate_no_anggota_berikutnya(data)
+    target = None
+    if nik:
+        target = next((a for a in data if (a.get('nik') or '').strip().upper() == nik.upper()), None)
+    if target is None and no_anggota:
+        target = next((a for a in data if (a.get('no_anggota') or '').strip().upper() == no_anggota.upper()), None)
 
-    data.append({
-        'id_anggota': id_anggota,
-        'no_anggota': no_anggota,
-        'nik': (request.form.get('nik') or '').strip(),
-        'nama': request.form['nama'],
-        'alamat': request.form['alamat'],
-        'no_telp': request.form['no_telp'],
-        'tgl_bergabung': datetime.now().strftime('%Y-%m-%d'),
-        'penghasilan_bersih': str(parse_rupiah_to_float(request.form.get('penghasilan_bersih', '0'))),
-        'cicilan_lain': str(parse_rupiah_to_float(request.form.get('cicilan_lain', '0')))
-    })
+    if target:
+        target['no_anggota'] = no_anggota or target.get('no_anggota', '')
+        target['nik'] = nik or target.get('nik', '')
+        target['nama'] = nama or target.get('nama', '')
+        target['alamat'] = alamat or target.get('alamat', '')
+        target['no_telp'] = no_telp or target.get('no_telp', '')
+        target['penghasilan_bersih'] = penghasilan_bersih
+        target['cicilan_lain'] = cicilan_lain
+        flash('Data anggota berhasil diperbarui tanpa membuat data ganda.', 'success')
+    else:
+        data.append({
+            'id_anggota': str(uuid.uuid4()),
+            'no_anggota': no_anggota,
+            'nik': nik,
+            'nama': nama,
+            'alamat': alamat,
+            'no_telp': no_telp,
+            'tgl_bergabung': datetime.now().strftime('%Y-%m-%d'),
+            'penghasilan_bersih': penghasilan_bersih,
+            'cicilan_lain': cicilan_lain,
+        })
+        flash('Data anggota berhasil ditambahkan.', 'success')
     tulis_csv(FILE_ANGGOTA, data, ANGGOTA_FIELDNAMES)
     return redirect('/anggota')
 
@@ -1411,7 +1735,11 @@ def edit_anggota(id_anggota):
         return redirect(url_for('halaman_anggota'))
 
     if request.method == 'POST':
-        data[idx]['nik'] = (request.form.get('nik') or '').strip()
+        nik = normalize_nik(request.form.get('nik'))
+        if nik and not is_valid_nik(nik):
+            flash('NIK harus terdiri dari tepat 16 digit angka.', 'danger')
+            return redirect(url_for('edit_anggota', id_anggota=id_anggota))
+        data[idx]['nik'] = nik
         data[idx]['nama'] = (request.form.get('nama') or '').strip()
         data[idx]['alamat'] = (request.form.get('alamat') or '').strip()
         data[idx]['no_telp'] = (request.form.get('no_telp') or '').strip()
@@ -1468,7 +1796,11 @@ def import_anggota_excel():
         return ''
 
     anggota = baca_csv(FILE_ANGGOTA)
-    by_nik = {(a.get('nik') or '').strip(): a for a in anggota if (a.get('nik') or '').strip()}
+    by_nik = {
+        normalize_nik(a.get('nik')): a
+        for a in anggota
+        if normalize_nik(a.get('nik'))
+    }
     by_no = {(a.get('no_anggota') or '').strip(): a for a in anggota if (a.get('no_anggota') or '').strip()}
 
     added = 0
@@ -1481,14 +1813,18 @@ def import_anggota_excel():
             if num.isdigit():
                 max_no = max(max_no, int(num))
 
+    invalid_nik_rows = 0
     for row in rows_iter:
-        nik = get_val(row, 'nik')
+        nik = normalize_nik(get_val(row, 'nik'))
         no_anggota = get_val(row, 'no_anggota')
         nama = get_val(row, 'nama')
         alamat = get_val(row, 'alamat')
         no_telp = get_val(row, 'no_telp', 'no_telepon', 'telepon')
         penghasilan = get_val(row, 'penghasilan_bersih')
         cicilan = get_val(row, 'cicilan_lain')
+        if nik and not is_valid_nik(nik):
+            invalid_nik_rows += 1
+            continue
         if not (nik or no_anggota or nama):
             continue
 
@@ -1532,6 +1868,8 @@ def import_anggota_excel():
 
     tulis_csv(FILE_ANGGOTA, anggota, ANGGOTA_FIELDNAMES)
     flash(f'Import selesai: {added} anggota baru ditambahkan, {updated} data anggota diperbarui.', 'success')
+    if invalid_nik_rows:
+        flash(f'{invalid_nik_rows} baris dilewati karena NIK tidak valid (harus 16 digit angka).', 'warning')
     return redirect(url_for('halaman_anggota'))
 
 
@@ -1547,7 +1885,9 @@ def _map_import_csv_headers(fieldnames):
     aliases = {
         'nama': ('nama', 'name'),
         'nik': ('nik',),
+        'no_anggota': ('no_anggota', 'no anggota'),
         'no_hp': ('no_hp', 'nohp', 'no_telp', 'telepon', 'telp', 'hp'),
+        'alamat': ('alamat', 'address'),
         'simpanan': ('simpanan', 'tabungan'),
         'pinjaman': ('pinjaman', 'hutang'),
         'tenor_bulan': ('tenor_bulan', 'tenor', 'jangka_waktu', 'lama_bulan'),
@@ -1574,65 +1914,63 @@ def _parse_opt_float_cell(raw):
 
 
 def parse_anggota_csv_upload(file_storage):
-    """Validasi & parse file CSV ringkasan anggota. Mengembalikan dict preview atau raise ValueError."""
+    """Validasi & parse file Excel ringkasan anggota. Mengembalikan dict preview atau raise ValueError."""
     if not file_storage or not file_storage.filename:
         raise ValueError('File belum dipilih.')
     ext = os.path.splitext(file_storage.filename.lower())[1]
-    if ext not in ('.csv', '.xlsx', '.xlsm'):
-        raise ValueError('Gunakan file .csv, .xlsx, atau .xlsm')
+    if ext not in ('.xlsx', '.xlsm'):
+        raise ValueError('Gunakan file Excel (.xlsx atau .xlsm).')
     file_storage.stream.seek(0)
     raw = file_storage.read()
     if len(raw) > 2 * 1024 * 1024:
         raise ValueError('Ukuran file maksimal 2 MB.')
     rows_src = []
     detected_columns = []
-    if ext == '.csv':
-        text = raw.decode('utf-8-sig', errors='replace')
-        reader = csv.DictReader(io.StringIO(text))
-        rows_src = list(reader)
-        fieldnames = reader.fieldnames
-    else:
-        if load_workbook is None:
-            raise ValueError('Import Excel membutuhkan openpyxl.')
-        wb = load_workbook(io.BytesIO(raw), data_only=True)
-        ws = wb.active
-        all_rows = list(ws.iter_rows(values_only=True))
-        if not all_rows:
-            raise ValueError('File kosong.')
-        headers = [str(h or '').strip() for h in all_rows[0]]
-        header_non_empty = [h for h in headers if h]
-        if len(header_non_empty) < 2:
-            raise ValueError('Format Excel tidak valid: header harus terpisah di beberapa kolom, bukan satu kolom gabungan.')
-        fieldnames = headers
-        for rr in all_rows[1:]:
-            row_map = {}
-            for i, h in enumerate(headers):
-                v = rr[i] if i < len(rr) else ''
-                row_map[h] = '' if v is None else str(v).strip()
-            # Cegah pola data gabungan dalam satu kolom (mis: "Nama,NIK,No HP,...")
-            isi_terisi = [v for v in row_map.values() if str(v or '').strip()]
-            if len(isi_terisi) == 1 and any(sep in isi_terisi[0] for sep in (',', ';', '|', '\t')):
-                raise ValueError('Format Excel tidak valid: data terdeteksi gabungan dalam satu kolom. Pisahkan per kolom.')
-            rows_src.append(row_map)
+    if load_workbook is None:
+        raise ValueError('Import Excel membutuhkan openpyxl.')
+    wb = load_workbook(io.BytesIO(raw), data_only=True)
+    ws = wb.active
+    all_rows = list(ws.iter_rows(values_only=True))
+    if not all_rows:
+        raise ValueError('File kosong.')
+    headers = [str(h or '').strip() for h in all_rows[0]]
+    header_non_empty = [h for h in headers if h]
+    if len(header_non_empty) < 2:
+        raise ValueError('Format Excel tidak valid: header harus terpisah di beberapa kolom, bukan satu kolom gabungan.')
+    fieldnames = headers
+    for rr in all_rows[1:]:
+        row_map = {}
+        for i, h in enumerate(headers):
+            v = rr[i] if i < len(rr) else ''
+            row_map[h] = '' if v is None else str(v).strip()
+        # Cegah pola data gabungan dalam satu kolom (mis: "Nama,NIK,No HP,...")
+        isi_terisi = [v for v in row_map.values() if str(v or '').strip()]
+        if len(isi_terisi) == 1 and any(sep in isi_terisi[0] for sep in (',', ';', '|', '\t')):
+            raise ValueError('Format Excel tidak valid: data terdeteksi gabungan dalam satu kolom. Pisahkan per kolom.')
+        rows_src.append(row_map)
     header_map = _map_import_csv_headers(fieldnames)
     if not header_map:
         raise ValueError(
             'Header tidak valid. Wajib ada kolom nik; disarankan: nama,nik,no hp,simpanan,pinjaman,tenor'
         )
-    detected_columns = [k for k in ('nama', 'nik', 'no_hp', 'simpanan', 'pinjaman', 'tenor_bulan') if k in header_map]
+    detected_columns = [k for k in ('nama', 'nik', 'no_anggota', 'no_hp', 'alamat', 'simpanan', 'pinjaman', 'tenor_bulan') if k in header_map]
     rows_out = []
     line_no = 1
     for row in rows_src:
         line_no += 1
         nama = (row.get(header_map['nama']) or '').strip() if 'nama' in header_map else ''
-        nik = (row.get(header_map['nik']) or '').strip()
+        nik = normalize_nik(row.get(header_map['nik']))
+        no_anggota = (row.get(header_map['no_anggota']) or '').strip() if 'no_anggota' in header_map else ''
         no_hp = (row.get(header_map['no_hp']) or '').strip() if 'no_hp' in header_map else ''
+        alamat = (row.get(header_map['alamat']) or '').strip() if 'alamat' in header_map else ''
         simp_raw = row.get(header_map['simpanan']) if 'simpanan' in header_map else ''
         pin_raw = row.get(header_map['pinjaman']) if 'pinjaman' in header_map else ''
         tenor_raw = row.get(header_map['tenor_bulan']) if 'tenor_bulan' in header_map else ''
         err = []
         if not nik:
             err.append('NIK wajib diisi')
+        elif not is_valid_nik(nik):
+            err.append('NIK harus 16 digit angka')
         simpanan = None
         pinjaman = None
         tenor_bulan = None
@@ -1657,7 +1995,9 @@ def parse_anggota_csv_upload(file_storage):
             'line': line_no,
             'nama': nama,
             'nik': nik,
+            'no_anggota': no_anggota,
             'no_hp': no_hp,
+            'alamat': alamat,
             'simpanan': simpanan,
             'pinjaman': pinjaman,
             'tenor_bulan': tenor_bulan,
@@ -1700,7 +2040,8 @@ def _float_impor_csv(val) -> float:
     return float(str(val).strip().replace(',', '').replace(' ', ''))
 
 
-def upsert_anggota_dari_baris_impor(anggota_list: list, id_a: str, nama: str, nik: str, no_hp: str, alamat: str) -> None:
+def upsert_anggota_dari_baris_impor(anggota_list: list, id_a: str, nama: str, nik: str, no_hp: str, alamat: str, no_anggota: str = '') -> None:
+    no_anggota = (no_anggota or '').strip()
     for a in anggota_list:
         if a.get('id_anggota') == id_a:
             if nama:
@@ -1711,8 +2052,25 @@ def upsert_anggota_dari_baris_impor(anggota_list: list, id_a: str, nama: str, ni
                 a['no_telp'] = no_hp
             if alamat:
                 a['alamat'] = alamat
+            if no_anggota:
+                bentrok = next(
+                    (
+                        x for x in anggota_list
+                        if x.get('id_anggota') != id_a
+                        and (x.get('no_anggota') or '').strip().upper() == no_anggota.upper()
+                    ),
+                    None,
+                )
+                if not bentrok:
+                    a['no_anggota'] = no_anggota
             return
-    no_baru = generate_no_anggota_berikutnya(anggota_list)
+    no_baru = no_anggota or generate_no_anggota_berikutnya(anggota_list)
+    bentrok_baru = next(
+        (x for x in anggota_list if (x.get('no_anggota') or '').strip().upper() == no_baru.upper()),
+        None,
+    )
+    if bentrok_baru:
+        no_baru = generate_no_anggota_berikutnya(anggota_list)
     anggota_list.append({
         'id_anggota': id_a,
         'no_anggota': no_baru,
@@ -1767,6 +2125,16 @@ def _resolve_id_anggota_by_nik_nohp(anggota_list: list, nik: str, no_hp: str) ->
             a['no_telp'] = hp_key
             return (a.get('id_anggota') or '').strip()
     return str(uuid.uuid4())
+
+
+def _resolve_id_anggota_by_identity(anggota_list: list, nik: str, no_hp: str, no_anggota: str = '') -> str:
+    """Resolve anggota by no_anggota first, then by NIK + No HP."""
+    no_anggota_key = (no_anggota or '').strip()
+    if no_anggota_key:
+        for a in anggota_list:
+            if (a.get('no_anggota') or '').strip() == no_anggota_key:
+                return (a.get('id_anggota') or '').strip()
+    return _resolve_id_anggota_by_nik_nohp(anggota_list, nik, no_hp)
 
 
 def kategori_pinjaman_dari_tenor(tenor_bulan: int) -> str:
@@ -1854,7 +2222,8 @@ def import_csv_unified():
             if not nik or not no_hp:
                 dilewati += 1
                 continue
-            id_a = _resolve_id_anggota_by_nik_nohp(anggota, nik, no_hp)
+            no_anggota = _pick_import_value(row, 'no_anggota', 'no anggota')
+            id_a = _resolve_id_anggota_by_identity(anggota, nik, no_hp, no_anggota)
             if not id_a:
                 dilewati += 1
                 continue
@@ -1871,7 +2240,7 @@ def import_csv_unified():
 
             nama = _pick_import_value(row, 'nama')
             alamat = _pick_import_value(row, 'alamat')
-            upsert_anggota_dari_baris_impor(anggota, id_a, nama, nik, no_hp, alamat)
+            upsert_anggota_dari_baris_impor(anggota, id_a, nama, nik, no_hp, alamat, no_anggota)
             if v_simp > 0:
                 merge_akumulasi(simpanan, id_a, v_simp)
             if v_pin > 0 or v_ten > 0:
@@ -1907,36 +2276,243 @@ def import_csv_unified():
 @app.route('/anggota/import-csv', methods=['GET'])
 @admin_required
 def halaman_import_csv_anggota():
-    flash('Fitur import CSV ringkasan dinonaktifkan.', 'warning')
-    return redirect(url_for('halaman_anggota'))
+    ensure_import_log_schema()
+    logs = baca_csv(FILE_IMPORT_LOG)
+    logs = sorted(logs, key=lambda x: x.get('waktu', ''), reverse=True)[:50]
+    return render_template('import_csv_anggota.html', import_log=logs)
 
 
 @app.route('/anggota/import-csv/sample')
 @admin_required
 def download_sample_csv_anggota():
-    flash('Fitur import CSV ringkasan dinonaktifkan.', 'warning')
-    return redirect(url_for('halaman_anggota'))
+    if Workbook is None:
+        flash('Fitur unduh contoh Excel membutuhkan openpyxl.', 'danger')
+        return redirect(url_for('halaman_import_csv_anggota'))
+
+    wb = Workbook()
+    ws = wb.active
+    ws.title = 'Template Import'
+    ws.append(['nama', 'nik', 'no_anggota', 'no_hp', 'alamat', 'simpanan', 'pinjaman', 'tenor_bulan'])
+    ws.append(['Budi Santoso', '3174xxxxxxxxxxxx', 'AG0001', '081234567890', 'Jakarta', '1500000', '40000000', '40'])
+    ws.append(['Siti Aulia', '3273xxxxxxxxxxxx', 'AG0002', '081298765432', 'Bandung', '500000', '0', ''])
+
+    bio = io.BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return send_file(
+        bio,
+        as_attachment=True,
+        download_name='template_import_gabungan.xlsx',
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    )
 
 
 @app.route('/anggota/import-csv/preview', methods=['POST'])
 @admin_required
 def preview_import_csv_anggota():
-    flash('Fitur import CSV ringkasan dinonaktifkan.', 'warning')
-    return redirect(url_for('halaman_anggota'))
+    try:
+        if 'file_csv' not in request.files:
+            flash('Tidak ada file yang dipilih.', 'danger')
+            return redirect(url_for('halaman_import_csv_anggota'))
+        payload = parse_anggota_csv_upload(request.files['file_csv'])
+        token = token_hex(16)
+        preview_path = os.path.join(IMPORT_PREVIEW_DIR, f'{token}.json')
+        with open(preview_path, 'w', encoding='utf-8') as f:
+            json.dump(payload, f, ensure_ascii=False)
+        return render_template(
+            'import_csv_preview.html',
+            token=token,
+            filename=payload.get('filename', ''),
+            rows=payload.get('rows', []),
+            detected_columns=payload.get('detected_columns', []),
+        )
+    except ValueError as ex:
+        flash(str(ex), 'danger')
+        return redirect(url_for('halaman_import_csv_anggota'))
+    except Exception as ex:
+        flash(f'Gagal membuat preview import: {ex}', 'danger')
+        return redirect(url_for('halaman_import_csv_anggota'))
 
 
 @app.route('/anggota/import-csv/preview', methods=['GET'])
 @admin_required
 def tampil_preview_import_csv():
-    flash('Fitur import CSV ringkasan dinonaktifkan.', 'warning')
-    return redirect(url_for('halaman_anggota'))
+    token = (request.args.get('token') or '').strip()
+    if not token:
+        flash('Token preview tidak ditemukan.', 'warning')
+        return redirect(url_for('halaman_import_csv_anggota'))
+    preview_path = os.path.join(IMPORT_PREVIEW_DIR, f'{token}.json')
+    if not os.path.exists(preview_path):
+        flash('Preview tidak ditemukan atau sudah kedaluwarsa.', 'warning')
+        return redirect(url_for('halaman_import_csv_anggota'))
+    with open(preview_path, 'r', encoding='utf-8') as f:
+        payload = json.load(f)
+    return render_template(
+        'import_csv_preview.html',
+        token=token,
+        filename=payload.get('filename', ''),
+        rows=payload.get('rows', []),
+        detected_columns=payload.get('detected_columns', []),
+    )
 
 
 @app.route('/anggota/import-csv/execute', methods=['POST'])
 @admin_required
 def execute_import_csv_anggota():
-    flash('Fitur import CSV ringkasan dinonaktifkan.', 'warning')
-    return redirect(url_for('halaman_anggota'))
+    token = (request.form.get('token') or '').strip()
+    mode = (request.form.get('mode') or 'append').strip().lower()
+    if mode not in ('append', 'overwrite'):
+        mode = 'append'
+    if not token:
+        flash('Token preview tidak valid.', 'danger')
+        return redirect(url_for('halaman_import_csv_anggota'))
+
+    preview_path = os.path.join(IMPORT_PREVIEW_DIR, f'{token}.json')
+    if not os.path.exists(preview_path):
+        flash('Preview tidak ditemukan atau sudah kedaluwarsa.', 'warning')
+        return redirect(url_for('halaman_import_csv_anggota'))
+
+    try:
+        with open(preview_path, 'r', encoding='utf-8') as f:
+            payload = json.load(f)
+        rows = payload.get('rows', []) or []
+        filename = payload.get('filename', 'import.xlsx')
+
+        ensure_anggota_schema()
+        ensure_simpanan_schema()
+        ensure_pinjaman_plafon_schema()
+
+        anggota = baca_csv(FILE_ANGGOTA)
+        simpanan = baca_csv(FILE_SIMPANAN)
+        pinjaman = baca_csv(FILE_PINJAMAN)
+
+        berhasil = 0
+        gagal = 0
+
+        for r in rows:
+            if r.get('errors'):
+                gagal += 1
+                continue
+
+            nik = (r.get('nik') or '').strip()
+            no_hp = (r.get('no_hp') or '').strip()
+            no_anggota = (r.get('no_anggota') or '').strip()
+            nama = (r.get('nama') or '').strip()
+            alamat = (r.get('alamat') or '').strip()
+
+            id_a = _resolve_id_anggota_by_identity(anggota, nik, no_hp, no_anggota)
+            if not id_a and nik:
+                found_by_nik = next((a for a in anggota if (a.get('nik') or '').strip() == nik), None)
+                if found_by_nik:
+                    id_a = (found_by_nik.get('id_anggota') or '').strip()
+            if not id_a:
+                id_a = str(uuid.uuid4())
+
+            upsert_anggota_dari_baris_impor(anggota, id_a, nama, nik, no_hp, alamat, no_anggota)
+
+            try:
+                v_simp = float(r.get('simpanan') or 0)
+            except (TypeError, ValueError):
+                v_simp = 0.0
+            try:
+                v_pin = float(r.get('pinjaman') or 0)
+            except (TypeError, ValueError):
+                v_pin = 0.0
+            try:
+                v_ten = int(float(r.get('tenor_bulan') or 0))
+            except (TypeError, ValueError):
+                v_ten = 0
+
+            if v_simp < 0 or v_pin < 0 or v_ten < 0:
+                gagal += 1
+                continue
+
+            if mode == 'overwrite':
+                if v_simp > 0:
+                    target = next((s for s in simpanan if s.get('id_anggota') == id_a), None)
+                    if target:
+                        target['total_simpanan'] = str(round(v_simp, 2))
+                    else:
+                        simpanan.append({'id_anggota': id_a, 'total_simpanan': str(round(v_simp, 2))})
+                if v_pin > 0 or v_ten > 0:
+                    tenor_input = v_ten if v_ten > 0 else DEFAULT_TENOR_IMPORT_PINJAMAN
+                    jenis = kategori_pinjaman_dari_tenor(tenor_input)
+                    p_exist = next(
+                        (
+                            p for p in pinjaman
+                            if p.get('id_anggota') == id_a
+                            and (p.get('jenis_pinjaman') or '').strip() == jenis
+                            and (p.get('status') or '').strip() == 'Disetujui'
+                        ),
+                        None,
+                    )
+                    if p_exist:
+                        try:
+                            old_plaf = float(p_exist.get('plafon') or 0)
+                            old_sisa = saldo_pinjaman_aktual(p_exist)
+                        except (TypeError, ValueError):
+                            old_plaf = 0.0
+                            old_sisa = 0.0
+                        paid_nominal = max(old_plaf - old_sisa, 0.0)
+                        tenor_data = int(float(p_exist.get('tenor_bulan') or p_exist.get('tenor_awal') or tenor_input))
+                        tenor_data = max(tenor_data, 1)
+                        bunga = float(p_exist.get('bunga_persen') or bunga_untuk_jenis_pinjaman(jenis, tenor_data))
+                        total_bayar = hitung_total_bayar_tanpa_provisi(v_pin, bunga, tenor_data, jenis)
+                        cic = hitung_cicilan_bulanan(v_pin, bunga, tenor_data)
+                        p_exist['plafon'] = str(round(v_pin, 2))
+                        p_exist['tenor_awal'] = p_exist.get('tenor_awal') or str(tenor_data)
+                        p_exist['tenor_bulan'] = str(tenor_data)
+                        p_exist['total_bayar'] = str(round(total_bayar, 2))
+                        p_exist['cicilan_per_bulan'] = str(round(cic, 2))
+                        p_exist['sisa_pinjaman'] = str(round(max(v_pin - paid_nominal, 0.0), 2))
+                    else:
+                        merge_pinjaman_akumulasi(pinjaman, id_a, v_pin, tenor_input, jenis)
+            else:
+                if v_simp > 0:
+                    merge_akumulasi(simpanan, id_a, v_simp)
+                if v_pin > 0 or v_ten > 0:
+                    tenor_input = v_ten if v_ten > 0 else DEFAULT_TENOR_IMPORT_PINJAMAN
+                    merge_pinjaman_akumulasi(
+                        pinjaman,
+                        id_a,
+                        v_pin,
+                        tenor_input,
+                        kategori_pinjaman_dari_tenor(tenor_input),
+                    )
+
+            berhasil += 1
+
+        simpanan[:] = _dedupe_rows_simpanan(simpanan)
+        pinjaman[:] = _dedupe_rows_pinjaman(pinjaman)
+        tulis_csv(FILE_ANGGOTA, anggota, ANGGOTA_FIELDNAMES)
+        tulis_csv(FILE_SIMPANAN, simpanan, SIMPANAN_FIELDNAMES)
+
+        amap_fin = {a.get('id_anggota'): a for a in anggota}
+        for p in pinjaman:
+            ag = amap_fin.get(p.get('id_anggota'))
+            if ag:
+                p['nama_anggota'] = ag.get('nama', '')
+                p['no_anggota'] = ag.get('no_anggota', '')
+        tulis_csv(FILE_PINJAMAN, pinjaman, PINJAMAN_FIELDNAMES)
+
+        _append_import_log(
+            berhasil=berhasil,
+            gagal=gagal,
+            mode=f'preview-{mode}',
+            nama_file=filename,
+            catatan='Import gabungan via preview Excel',
+        )
+
+        try:
+            os.remove(preview_path)
+        except OSError:
+            pass
+
+        flash(f'Import selesai: {berhasil} baris berhasil, {gagal} baris gagal/dilewati.', 'success')
+        return redirect(url_for('halaman_anggota'))
+    except Exception as ex:
+        flash(f'Eksekusi import gagal: {ex}', 'danger')
+        return redirect(url_for('halaman_import_csv_anggota'))
 
 
 @app.route('/anggota/cari_nama', methods=['GET'])
@@ -1968,15 +2544,52 @@ def cari_anggota_autocomplete():
 @login_required
 def halaman_simpanan():
     ensure_simpanan_schema()
+    ensure_simpanan_transaksi_schema()
     simpanan = baca_csv(FILE_SIMPANAN)
+    simpanan_transaksi = baca_csv(FILE_SIMPANAN_TRANSAKSI)
     anggota = baca_csv(FILE_ANGGOTA)
     if not is_current_user_admin():
         id_anggota = get_current_user_id_anggota()
         simpanan = [s for s in simpanan if s.get('id_anggota') == id_anggota]
+        simpanan_transaksi = [t for t in simpanan_transaksi if t.get('id_anggota') == id_anggota]
         anggota = [a for a in anggota if a.get('id_anggota') == id_anggota]
 
     simpanan_tampil = enrich_simpanan_untuk_tampilan(simpanan, anggota)
     simpanan_tampil.reverse()
+
+    saldo_per_jenis_map = {}
+    for t in simpanan_transaksi:
+        id_a = (t.get('id_anggota') or '').strip()
+        if not id_a:
+            continue
+        jenis = (t.get('jenis_simpanan') or 'Manasuka').strip() or 'Manasuka'
+        if jenis not in JENIS_SIMPANAN:
+            jenis = 'Manasuka'
+        try:
+            nominal = float(t.get('jumlah') or 0)
+        except (TypeError, ValueError):
+            nominal = 0.0
+        if id_a not in saldo_per_jenis_map:
+            saldo_per_jenis_map[id_a] = {k: 0.0 for k in JENIS_SIMPANAN}
+        saldo_per_jenis_map[id_a][jenis] += nominal
+
+    for s in simpanan_tampil:
+        id_a = s.get('id_anggota', '')
+        by_jenis = saldo_per_jenis_map.get(id_a, {k: 0.0 for k in JENIS_SIMPANAN})
+        saldo_manasuka = float(by_jenis.get('Manasuka', 0.0))
+        saldo_hari_raya = float(by_jenis.get('Hari Raya', 0.0))
+        saldo_pendidikan = float(by_jenis.get('Pendidikan', 0.0))
+        # Jika ada data lama (total tanpa rincian jenis), alokasikan selisih ke Manasuka.
+        try:
+            total_saldo = float(s.get('jumlah') or 0)
+        except (TypeError, ValueError):
+            total_saldo = 0.0
+        subtotal_jenis = saldo_manasuka + saldo_hari_raya + saldo_pendidikan
+        if total_saldo > subtotal_jenis:
+            saldo_manasuka += (total_saldo - subtotal_jenis)
+        s['saldo_manasuka'] = round(saldo_manasuka, 2)
+        s['saldo_hari_raya'] = round(saldo_hari_raya, 2)
+        s['saldo_pendidikan'] = round(saldo_pendidikan, 2)
 
     saldo_anggota = {}
     for a in anggota:
@@ -1985,11 +2598,15 @@ def halaman_simpanan():
         if s['id_anggota'] in saldo_anggota:
             saldo_anggota[s['id_anggota']] += float(s.get('total_simpanan') or 0)
 
+    transaksi_tampil = sorted(simpanan_transaksi, key=lambda x: x.get('tanggal', ''), reverse=True)
+
     return render_template(
         'simpanan.html',
         simpanan=simpanan_tampil,
+        simpanan_transaksi=transaksi_tampil,
         anggota=anggota,
         saldo_anggota=saldo_anggota,
+        jenis_simpanan_choices=JENIS_SIMPANAN,
     )
 
 
@@ -1997,7 +2614,9 @@ def halaman_simpanan():
 @login_required
 def tambah_simpanan():
     ensure_simpanan_schema()
+    ensure_simpanan_transaksi_schema()
     simpanan = baca_csv(FILE_SIMPANAN)
+    simpanan_transaksi = baca_csv(FILE_SIMPANAN_TRANSAKSI)
     if is_current_user_admin():
         id_anggota = request.form['id_anggota']
     else:
@@ -2021,6 +2640,23 @@ def tambah_simpanan():
 
     merge_akumulasi(simpanan, id_anggota, jumlah)
     tulis_csv(FILE_SIMPANAN, simpanan, SIMPANAN_FIELDNAMES)
+
+    jenis_simpanan = (request.form.get('jenis_simpanan') or 'Manasuka').strip() or 'Manasuka'
+    if jenis_simpanan not in JENIS_SIMPANAN:
+        jenis_simpanan = 'Manasuka'
+
+    simpanan_transaksi.append({
+        'id_transaksi': str(uuid.uuid4()),
+        'id_anggota': id_anggota,
+        'no_anggota': anggota_data.get('no_anggota', ''),
+        'nama_anggota': anggota_data.get('nama', ''),
+        'tanggal': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'jenis_simpanan': jenis_simpanan,
+        'jumlah': str(round(jumlah, 2)),
+        'keterangan': 'Simpanan',
+        'diajukan_oleh': session.get('user') or '',
+    })
+    tulis_csv(FILE_SIMPANAN_TRANSAKSI, simpanan_transaksi, SIMPANAN_TRANSAKSI_FIELDNAMES)
     flash('Simpanan berhasil ditambahkan ke saldo.', 'success')
     return redirect('/simpanan')
 
@@ -2054,13 +2690,40 @@ def cek_saldo(id_anggota):
     """Cek total saldo simpanan anggota."""
     restrict_id_anggota_or_forbid(id_anggota)
     ensure_simpanan_schema()
+    ensure_simpanan_transaksi_schema()
     simpanan = baca_csv(FILE_SIMPANAN)
+    simpanan_transaksi = baca_csv(FILE_SIMPANAN_TRANSAKSI)
     total = 0.0
     for s in simpanan:
         if s.get('id_anggota') == id_anggota:
             total = float(s.get('total_simpanan') or 0)
             break
-    return jsonify({'saldo': total})
+    per_jenis = {k: 0.0 for k in JENIS_SIMPANAN}
+    for t in simpanan_transaksi:
+        if t.get('id_anggota') != id_anggota:
+            continue
+        jenis = (t.get('jenis_simpanan') or 'Manasuka').strip() or 'Manasuka'
+        if jenis not in per_jenis:
+            jenis = 'Manasuka'
+        try:
+            nominal = float(t.get('jumlah') or 0)
+        except (TypeError, ValueError):
+            nominal = 0.0
+        per_jenis[jenis] += nominal
+    subtotal = sum(per_jenis.values())
+    if total > subtotal:
+        per_jenis['Manasuka'] += (total - subtotal)
+
+    jenis_req = (request.args.get('jenis_simpanan') or 'Manasuka').strip() or 'Manasuka'
+    if jenis_req not in per_jenis:
+        jenis_req = 'Manasuka'
+
+    return jsonify({
+        'saldo': total,
+        'saldo_per_jenis': {k: round(v, 2) for k, v in per_jenis.items()},
+        'jenis_simpanan': jenis_req,
+        'saldo_jenis': round(per_jenis.get(jenis_req, 0.0), 2),
+    })
 
 
 # ══════════════════════════════════════════════
@@ -2081,11 +2744,68 @@ def halaman_pinjaman():
         anggota = anggota_full
         cicilan = baca_csv(FILE_PINJAMAN_CICILAN)
         cicilan_menunggu = [c for c in cicilan if c.get('status') == 'Menunggu']
+
+    riwayat_map = {}
+    for p in pinjaman:
+        id_a = p.get('id_anggota', '')
+        if not id_a:
+            continue
+        tenor_raw = p.get('tenor_bulan', p.get('tenor', '0'))
+        try:
+            tenor_norm = int(float(tenor_raw or 0))
+        except (TypeError, ValueError):
+            tenor_norm = 0
+        jenis = (p.get('jenis_pinjaman') or '').strip()
+        if not jenis or jenis == JENIS_IMPORT_CSV:
+            jenis = kategori_pinjaman_dari_tenor(tenor_norm)
+        if not jenis:
+            continue
+
+        row = riwayat_map.setdefault(id_a, {
+            'id_anggota': id_a,
+            'no_anggota': p.get('no_anggota', ''),
+            'nama_anggota': p.get('nama_anggota', ''),
+            'total_pengajuan': 0,
+            'total_aktif': 0,
+            'jenis_list': [],
+        })
+
+        if not row['no_anggota']:
+            row['no_anggota'] = p.get('no_anggota', '')
+        if not row['nama_anggota']:
+            row['nama_anggota'] = p.get('nama_anggota', '')
+
+        row['total_pengajuan'] += 1
+        if (p.get('status') or '').strip() == 'Disetujui' and saldo_pinjaman_aktual(p) > 0:
+            row['total_aktif'] += 1
+        if jenis not in row['jenis_list']:
+            row['jenis_list'].append(jenis)
+
+    anggota_map = {a.get('id_anggota'): a for a in anggota_full}
+    riwayat_pinjaman_anggota = []
+    for item in riwayat_map.values():
+        a = anggota_map.get(item['id_anggota'], {})
+        no_anggota = item['no_anggota'] or a.get('no_anggota', '-')
+        nama_anggota = item['nama_anggota'] or a.get('nama', '-')
+        jenis_items = item['jenis_list']
+        riwayat_pinjaman_anggota.append({
+            'id_anggota': item['id_anggota'],
+            'no_anggota': no_anggota,
+            'nama_anggota': nama_anggota,
+            'total_pengajuan': item['total_pengajuan'],
+            'total_aktif': item['total_aktif'],
+            'jenis_items': jenis_items,
+            'jenis_text': ', '.join(jenis_items),
+        })
+
+    riwayat_pinjaman_anggota.sort(key=lambda x: (x.get('nama_anggota') or '').lower())
+
     pinjaman_tampil = enrich_pinjaman_untuk_tampilan(pinjaman, anggota_full)
     pinjaman_tampil.reverse()
     return render_template(
         'pinjaman.html',
         pinjaman=pinjaman_tampil,
+        riwayat_pinjaman_anggota=riwayat_pinjaman_anggota,
         anggota=anggota,
         cicilan_menunggu=cicilan_menunggu,
         metode_bayar_choices=METODE_BAYAR_CHOICES,
@@ -2108,8 +2828,11 @@ def hitung_pinjaman():
         if tenor <= 0:
             return jsonify({'error': 'Tenor harus lebih dari 0'}), 400
         bunga_persen = bunga_untuk_jenis_pinjaman(jenis_pm, tenor)
-        total_bayar = hitung_total_bayar_tanpa_provisi(plafon, bunga_persen, tenor)
-        cicilan = total_bayar / tenor
+        total_bayar = hitung_total_bayar_tanpa_provisi(plafon, bunga_persen, tenor, jenis_pm)
+        provisi_nominal = provisi_nominal_pinjaman(jenis_pm, plafon, tenor)
+        provisi_persen = provisi_persen_dari_pinjaman(jenis_pm, tenor)
+        # Hitung cicilan bulanan: cicilan = (p / b) + (p × j%)
+        cicilan = hitung_cicilan_bulanan(plafon, bunga_persen, tenor)
 
         kapasitas_cicilan = None
         plafon_maks = None
@@ -2124,12 +2847,16 @@ def hitung_pinjaman():
                 dsr = dsr_otomatis_dari_penghasilan(penghasilan)
                 dsr_persen = round(dsr * 100)
                 kapasitas_cicilan = hitung_kapasitas_cicilan(penghasilan, cicilan_lain, dsr)
-                plafon_maks = hitung_plafon_maks_anuitas(kapasitas_cicilan, bunga_persen, tenor)
+                plafon_maks = hitung_plafon_maks_anuitas(kapasitas_cicilan, bunga_persen, tenor, jenis_pm)
+                if jenis_pm == 'Solusi Cepat':
+                    plafon_maks = min(plafon_maks, 3_000_000.0)
         return jsonify({
             'bunga_persen': bunga_persen,
             'tenor': tenor,
             'total_bayar': round(total_bayar, 2),
             'cicilan_per_bulan': round(cicilan, 2),
+            'provisi_nominal': round(provisi_nominal, 2),
+            'provisi_persen': round(provisi_persen, 2),
             'kapasitas_cicilan': round(kapasitas_cicilan, 2) if kapasitas_cicilan is not None else None,
             'plafon_maks': round(plafon_maks, 2) if plafon_maks is not None else None,
             'dsr_persen': dsr_persen,
@@ -2148,11 +2875,16 @@ def cek_tunggakan(id_anggota):
         p for p in pinjaman
         if p.get('id_anggota') == id_anggota
         and p.get('status') == 'Disetujui'
-        and float(p.get('sisa_pinjaman') or p.get('total_pinjaman') or 0) > 0
+        and saldo_pinjaman_aktual(p) > 0
     ]
+    ada_solusi_cepat_aktif = ada_pinjaman_solusi_cepat_aktif(pinjaman, id_anggota)
     if tunggakan:
-        return jsonify({'ada_tunggakan': True, 'pinjaman_aktif': len(tunggakan)})
-    return jsonify({'ada_tunggakan': False, 'pinjaman_aktif': 0})
+        return jsonify({
+            'ada_tunggakan': True,
+            'pinjaman_aktif': len(tunggakan),
+            'ada_solusi_cepat_aktif': ada_solusi_cepat_aktif,
+        })
+    return jsonify({'ada_tunggakan': False, 'pinjaman_aktif': 0, 'ada_solusi_cepat_aktif': ada_solusi_cepat_aktif})
 
 
 @app.route('/pinjaman/tambah', methods=['POST'])
@@ -2172,6 +2904,17 @@ def tambah_pinjaman():
     if not anggota_data:
         return "Anggota tidak ditemukan", 400
 
+    if not is_current_user_admin():
+        pinjaman_telat = [
+            p for p in pinjaman
+            if p.get('id_anggota') == id_anggota
+            and p.get('status') == 'Disetujui'
+            and pinjaman_telat_bayar_aktual(p)
+        ]
+        if pinjaman_telat:
+            flash('Pengajuan ditolak: masih ada pinjaman yang telat bayar melewati tanggal jatuh tempo.', 'danger')
+            return redirect('/pinjaman')
+
     jenis = (request.form.get('jenis_pinjaman') or 'Jangka Pendek').strip()
     try:
         plafon = float(request.form['plafon'].replace(',', '').replace('.', ''))
@@ -2180,9 +2923,22 @@ def tambah_pinjaman():
     except ValueError as e:
         flash(str(e), 'danger')
         return redirect('/pinjaman')
+
+    if jenis == 'Solusi Cepat' and ada_pinjaman_solusi_cepat_aktif(pinjaman, id_anggota):
+        flash('Pengajuan Solusi Cepat ditolak: Solusi Cepat sebelumnya belum lunas. Jenis pinjaman lain tetap bisa diajukan.', 'danger')
+        return redirect('/pinjaman')
+
+    jenis_simpanan = (request.form.get('jenis_simpanan') or 'Manasuka').strip() or 'Manasuka'
+    if jenis_simpanan not in JENIS_SIMPANAN:
+        jenis_simpanan = 'Manasuka'
+
+    if jenis == 'Solusi Cepat' and plafon > 3_000_000:
+        flash('Pengajuan ditolak: plafon Solusi Cepat maksimal Rp 3.000.000.', 'danger')
+        return redirect('/pinjaman')
+
     # Hitung total_bayar TANPA provisi untuk pengajuan awal
-    total_bayar = hitung_total_bayar_tanpa_provisi(plafon, bunga_persen, tenor)
-    cicilan = total_bayar / tenor
+    total_bayar = hitung_total_bayar_tanpa_provisi(plafon, bunga_persen, tenor, jenis)
+    cicilan = hitung_cicilan_bulanan(plafon, bunga_persen, tenor)
     
     # Hitung provisi untuk informasi user (khusus Jangka Panjang, dipotong saat pencairan)
     provisi_nominal = provisi_nominal_pinjaman(jenis, plafon, tenor)
@@ -2191,7 +2947,9 @@ def tambah_pinjaman():
     cicilan_lain = float(anggota_data.get('cicilan_lain') or 0)
     dsr = dsr_otomatis_dari_penghasilan(penghasilan)
     kapasitas_cicilan = hitung_kapasitas_cicilan(penghasilan, cicilan_lain, dsr)
-    plafon_maks = hitung_plafon_maks_anuitas(kapasitas_cicilan, bunga_persen, tenor)
+    plafon_maks = hitung_plafon_maks_anuitas(kapasitas_cicilan, bunga_persen, tenor, jenis)
+    if jenis == 'Solusi Cepat':
+        plafon_maks = min(plafon_maks, 3_000_000.0)
     if kapasitas_cicilan <= 0:
         flash('Pengajuan ditolak: kapasitas cicilan anggota tidak mencukupi.', 'danger')
         return redirect('/pinjaman')
@@ -2217,12 +2975,14 @@ def tambah_pinjaman():
         'nama_anggota': anggota_data.get('nama', ''),
         'no_anggota': anggota_data.get('no_anggota', ''),
         'jenis_pinjaman': jenis,
+        'jenis_simpanan': jenis_simpanan,
         'plafon': str(round(plafon, 2)),
+        'tenor_awal': str(tenor),
         'tenor_bulan': str(tenor),
         'bunga_persen': str(bunga_persen),
         'total_bayar': str(round(total_bayar, 2)),
         'cicilan_per_bulan': str(round(cicilan, 2)),
-        'sisa_pinjaman': '0',
+        'sisa_pinjaman': str(round(plafon, 2)),
         'tanggal_pengajuan': tgl,
         'status': 'Menunggu',
         'tanggal_lunas': '',
@@ -2256,18 +3016,20 @@ def konfirmasi_pinjaman(id_pinjaman):
                 bunga_persen = float(p.get('bunga_persen') or 0)
                 
                 # Kewajiban cicilan tetap tanpa provisi (provisi dipotong saat pencairan)
-                total_bayar = hitung_total_bayar_tanpa_provisi(plafon, bunga_persen, tenor)
-                cicilan = (total_bayar / tenor) if tenor > 0 else 0.0
+                total_bayar = hitung_total_bayar_tanpa_provisi(plafon, bunga_persen, tenor, jenis_pinjaman)
+                cicilan = hitung_cicilan_bulanan(plafon, bunga_persen, tenor)
                 provisi_nominal = provisi_nominal_pinjaman(jenis_pinjaman, plafon, tenor)
                 dana_cair = max(plafon - provisi_nominal, 0.0)
                 
                 p['total_bayar'] = str(round(total_bayar, 2))
                 p['cicilan_per_bulan'] = str(round(cicilan, 2))
-                p['sisa_pinjaman'] = str(round(total_bayar, 2))
+                p['tenor_awal'] = str(tenor)
+                p['sisa_pinjaman'] = str(round(plafon, 2))
             except (TypeError, ValueError):
                 # Jika gagal hitung, gunakan nilai existing
-                tb = float(p.get('total_bayar') or 0)
-                p['sisa_pinjaman'] = str(round(tb, 2))
+                plaf = float(p.get('plafon') or 0)
+                p['tenor_awal'] = str(int(float(p.get('tenor_bulan') or 0)))
+                p['sisa_pinjaman'] = str(round(plaf, 2))
             
             found = True
             break
@@ -2320,22 +3082,26 @@ def tolak_pinjaman(id_pinjaman):
 
 
 def _proses_angsur_pinjaman(id_pinjaman: str):
-    """Kurangi sisa kewajiban satu kali cicilan."""
+    """Kurangi sisa kewajiban satu kali cicilan dan turunkan tenor tersisa 1 bulan."""
     pinjaman = baca_csv(FILE_PINJAMAN)
     for p in pinjaman:
         if p.get('id_pinjaman') != id_pinjaman:
             continue
         if p.get('status') != 'Disetujui':
             return
-        sisa = float(p.get('sisa_pinjaman') or 0)
-        cic = float(p.get('cicilan_per_bulan') or 0)
-        if cic <= 0 or sisa <= 0:
-            return
+        sisa = saldo_pinjaman_aktual(p)
+        cic = nominal_cicilan_aktual(p)
         baru = max(sisa - cic, 0)
         p['sisa_pinjaman'] = str(round(baru, 2))
+        try:
+            tenor_now = int(float(p.get('tenor_bulan') or p.get('tenor_awal') or 0))
+        except (TypeError, ValueError):
+            tenor_now = 0
+        p['tenor_bulan'] = str(max(tenor_now - 1, 0))
         if baru <= 0:
             p['status'] = 'Lunas'
             p['tanggal_lunas'] = datetime.now().strftime('%Y-%m-%d')
+            p['tenor_bulan'] = '0'
         break
     tulis_csv(FILE_PINJAMAN, pinjaman, PINJAMAN_FIELDNAMES)
 
@@ -2347,10 +3113,12 @@ def _pinjaman_row_dengan_nama(id_pinjaman: str):
         return None, None
     ag = get_anggota_by_id(target.get('id_anggota', '')) or {}
     cic = float(target.get('cicilan_per_bulan') or 0) or cicilan_per_bulan_saldo(target)
+    sisa = saldo_pinjaman_aktual(target)
     return target, {
         'no_anggota': target.get('no_anggota') or ag.get('no_anggota', ''),
         'nama_anggota': target.get('nama_anggota') or ag.get('nama', ''),
         'cicilan_per_bulan': str(round(cic, 2)),
+        'saldo_pinjaman': str(round(sisa, 2)),
     }
 
 
@@ -2364,11 +3132,12 @@ def angsur_pinjaman(id_pinjaman):
     if not target:
         flash('Data pinjaman tidak ditemukan.', 'danger')
         return redirect('/pinjaman')
-    if target.get('status') != 'Disetujui' or float(target.get('sisa_pinjaman') or 0) <= 0:
+    if target.get('status') != 'Disetujui' or saldo_pinjaman_aktual(target) <= 0:
         flash('Pinjaman ini tidak memiliki cicilan yang dapat dibayar.', 'warning')
         return redirect('/pinjaman')
 
     id_anggota = target.get('id_anggota', '')
+    jumlah_bayar = nominal_cicilan_aktual(target)
     cicilan = baca_csv(FILE_PINJAMAN_CICILAN)
     cicilan.append({
         'id_cicilan': str(uuid.uuid4()),
@@ -2376,7 +3145,7 @@ def angsur_pinjaman(id_pinjaman):
         'id_anggota': id_anggota,
         'no_anggota': meta['no_anggota'],
         'nama_anggota': meta['nama_anggota'],
-        'jumlah': meta['cicilan_per_bulan'],
+        'jumlah': str(round(jumlah_bayar, 2)),
         'tanggal_pengajuan': datetime.now().strftime('%Y-%m-%d'),
         'status': 'Disetujui',
         'tanggal_konfirmasi': datetime.now().strftime('%Y-%m-%d'),
@@ -2389,6 +3158,58 @@ def angsur_pinjaman(id_pinjaman):
     tulis_csv(FILE_PINJAMAN_CICILAN, cicilan, CICILAN_FIELDNAMES)
     _proses_angsur_pinjaman(id_pinjaman)
     flash('Cicilan dicatat (bayar melalui admin). Saldo pinjaman diperbarui.', 'success')
+    return redirect('/pinjaman')
+
+
+@app.route('/pinjaman/cicilan/gagal-bayar/<id_pinjaman>', methods=['POST'])
+@admin_required
+def gagal_bayar_pinjaman(id_pinjaman):
+    """Catat cicilan gagal bayar dan akumulasikan ke sisa pinjaman."""
+    ensure_pinjaman_cicilan_schema()
+    ket = (request.form.get('keterangan') or '').strip() or 'Gagal bayar cicilan (terlambat / tidak tepat waktu)'
+    target, meta = _pinjaman_row_dengan_nama(id_pinjaman)
+    if not target:
+        flash('Data pinjaman tidak ditemukan.', 'danger')
+        return redirect('/pinjaman')
+    if target.get('status') != 'Disetujui' or saldo_pinjaman_aktual(target) <= 0:
+        flash('Pinjaman ini tidak memiliki cicilan aktif yang bisa ditandai gagal bayar.', 'warning')
+        return redirect('/pinjaman')
+
+    jumlah_bayar = nominal_cicilan_aktual(target)
+    cicilan = baca_csv(FILE_PINJAMAN_CICILAN)
+    cicilan.append({
+        'id_cicilan': str(uuid.uuid4()),
+        'id_pinjaman': id_pinjaman,
+        'id_anggota': target.get('id_anggota', ''),
+        'no_anggota': meta['no_anggota'],
+        'nama_anggota': meta['nama_anggota'],
+        'jumlah': str(round(jumlah_bayar, 2)),
+        'tanggal_pengajuan': datetime.now().strftime('%Y-%m-%d'),
+        'status': 'Gagal Bayar',
+        'tanggal_konfirmasi': datetime.now().strftime('%Y-%m-%d'),
+        'dikonfirmasi_oleh': session.get('user') or '',
+        'diajukan_oleh': session.get('user') or '',
+        'keterangan': ket,
+        'metode_pembayaran': 'Admin',
+        'detail_pembayaran': '',
+    })
+    tulis_csv(FILE_PINJAMAN_CICILAN, cicilan, CICILAN_FIELDNAMES)
+
+    # Akumulasi tunggakan: cicilan gagal bayar ditambahkan ke sisa pinjaman.
+    pinjaman_rows = baca_csv(FILE_PINJAMAN)
+    for p in pinjaman_rows:
+        if p.get('id_pinjaman') != id_pinjaman:
+            continue
+        sisa_sekarang = saldo_pinjaman_aktual(p)
+        sisa_baru = max(sisa_sekarang + jumlah_bayar, 0.0)
+        p['sisa_pinjaman'] = str(round(sisa_baru, 2))
+        if p.get('status') == 'Lunas':
+            p['status'] = 'Disetujui'
+            p['tanggal_lunas'] = ''
+        break
+    tulis_csv(FILE_PINJAMAN, pinjaman_rows, PINJAMAN_FIELDNAMES)
+
+    flash('Cicilan ditandai gagal bayar. Sisa cicilan telah diakumulasi.', 'warning')
     return redirect('/pinjaman')
 
 
@@ -2408,8 +3229,12 @@ def ajukan_cicilan(id_pinjaman):
         if not id_anggota_user or id_anggota != id_anggota_user:
             abort(403)
 
-    if target.get('status') != 'Disetujui' or float(target.get('sisa_pinjaman') or 0) <= 0:
+    if target.get('status') != 'Disetujui' or saldo_pinjaman_aktual(target) <= 0:
         flash('Pinjaman ini tidak memiliki cicilan yang perlu dibayar.', 'warning')
+        return redirect('/pinjaman')
+
+    if (target.get('jenis_pinjaman') or '').strip() == 'Solusi Cepat':
+        flash('Solusi Cepat hanya bisa dibayar melalui admin.', 'warning')
         return redirect('/pinjaman')
 
     metode = (request.form.get('metode_pembayaran') or 'Lainnya').strip()
@@ -2422,13 +3247,14 @@ def ajukan_cicilan(id_pinjaman):
     keterangan = ' — '.join(ket_parts)
 
     cicilan = baca_csv(FILE_PINJAMAN_CICILAN)
+    jumlah_bayar = nominal_cicilan_aktual(target)
     cicilan.append({
         'id_cicilan': str(uuid.uuid4()),
         'id_pinjaman': id_pinjaman,
         'id_anggota': id_anggota,
         'no_anggota': meta['no_anggota'],
         'nama_anggota': meta['nama_anggota'],
-        'jumlah': meta['cicilan_per_bulan'],
+        'jumlah': str(round(jumlah_bayar, 2)),
         'tanggal_pengajuan': datetime.now().strftime('%Y-%m-%d'),
         'status': 'Menunggu',
         'tanggal_konfirmasi': '',
@@ -2460,14 +3286,49 @@ def konfirmasi_cicilan(id_cicilan):
         flash('Pengajuan cicilan ini sudah diproses sebelumnya.', 'warning')
         return redirect('/pinjaman')
 
+    pinjaman, _ = _pinjaman_row_dengan_nama(target['id_pinjaman'])
+    if not pinjaman:
+        flash('Data pinjaman tidak ditemukan.', 'danger')
+        return redirect('/pinjaman')
+
+    jumlah_bayar = nominal_cicilan_aktual(pinjaman)
+
     target['status'] = 'Disetujui'
     target['tanggal_konfirmasi'] = datetime.now().strftime('%Y-%m-%d')
     target['dikonfirmasi_oleh'] = session.get('user') or ''
+    target['jumlah'] = str(round(jumlah_bayar, 2))
     tulis_csv(FILE_PINJAMAN_CICILAN, cicilan, CICILAN_FIELDNAMES)
 
     _proses_angsur_pinjaman(target['id_pinjaman'])
-    flash('Pengajuan bayar cicilan disetujui dan sisa pinjaman telah diperbarui.', 'success')
+    flash('Pengajuan bayar cicilan diterima dan sisa pinjaman telah diperbarui.', 'success')
     return redirect('/pinjaman')
+
+
+@app.route('/pinjaman/cicilan/menunggu', methods=['GET'])
+@admin_required
+def cicilan_menunggu_json():
+    """Data pengajuan cicilan menunggu untuk refresh otomatis di halaman pinjaman."""
+    ensure_pinjaman_cicilan_schema()
+    rows = [c for c in baca_csv(FILE_PINJAMAN_CICILAN) if (c.get('status') or '').strip() == 'Menunggu']
+    rows.sort(key=lambda x: x.get('tanggal_pengajuan', ''), reverse=True)
+
+    items = []
+    for c in rows:
+        try:
+            jumlah = float(c.get('jumlah') or 0)
+        except (TypeError, ValueError):
+            jumlah = 0.0
+        items.append({
+            'id_cicilan': c.get('id_cicilan', ''),
+            'tanggal_pengajuan': c.get('tanggal_pengajuan', '-'),
+            'no_anggota': c.get('no_anggota', '-') or '-',
+            'nama_anggota': c.get('nama_anggota', '-') or '-',
+            'jumlah': round(jumlah, 2),
+            'metode_pembayaran': c.get('metode_pembayaran', '-') or '-',
+            'keterangan': c.get('keterangan', '-') or '-',
+        })
+
+    return jsonify({'count': len(items), 'items': items})
 
 
 @app.route('/pinjaman/cicilan/tolak/<id_cicilan>')
@@ -2626,7 +3487,7 @@ def generate_excel_laporan_terpadu():
             int(float(p.get('tenor_bulan') or p.get('tenor') or 0)),
             float(p.get('bunga_persen') or 0),
             float(p.get('cicilan_per_bulan') or 0),
-            float(p.get('sisa_pinjaman') or 0),
+            saldo_pinjaman_aktual(p),
             p.get('status', ''),
         ])
 
@@ -2768,7 +3629,7 @@ def export_pinjaman():
             float(p.get('plafon') or 0),
             int(float(p.get('tenor_bulan') or 0)),
             float(p.get('cicilan_per_bulan') or 0),
-            float(p.get('sisa_pinjaman') or 0),
+            saldo_pinjaman_aktual(p),
             p.get('status', ''),
         ])
 
@@ -2803,8 +3664,14 @@ def laporan_anggota(id_anggota):
         return "Anggota tidak ditemukan", 404
 
     ensure_simpanan_schema()
+    ensure_simpanan_transaksi_schema()
     anggota_all = baca_csv(FILE_ANGGOTA)
     simpanan_raw = [s for s in baca_csv(FILE_SIMPANAN) if s['id_anggota'] == id_anggota]
+    simpanan_transaksi = [s for s in baca_csv(FILE_SIMPANAN_TRANSAKSI) if s.get('id_anggota') == id_anggota]
+    for t in simpanan_transaksi:
+        ket = (t.get('keterangan') or '').strip()
+        if ket:
+            t['keterangan'] = ket.replace('Setoran', 'Simpanan').replace('setoran', 'simpanan')
     pinjaman_raw = [p for p in baca_csv(FILE_PINJAMAN) if p['id_anggota'] == id_anggota]
     simpanan = enrich_simpanan_untuk_tampilan(simpanan_raw, anggota_all)
     pinjaman = enrich_pinjaman_untuk_tampilan(pinjaman_raw, anggota_all)
@@ -2827,7 +3694,7 @@ def laporan_anggota(id_anggota):
 
     total_simpanan = sum(float(s.get('total_simpanan') or 0) for s in simpanan_raw)
     total_pinjaman = sum(
-        float(p.get('sisa_pinjaman') or 0)
+        saldo_pinjaman_aktual(p)
         for p in pinjaman_raw
         if p.get('status') == 'Disetujui'
     )
@@ -2835,6 +3702,7 @@ def laporan_anggota(id_anggota):
     return render_template('cetak_struk.html',
                            anggota=anggota_data,
                            simpanan=simpanan,
+                           simpanan_transaksi=sorted(simpanan_transaksi, key=lambda x: x.get('tanggal', ''), reverse=True),
                            pinjaman=pinjaman_laporan,
                            total_simpanan=total_simpanan,
                            total_pinjaman=total_pinjaman,
@@ -2847,7 +3715,6 @@ def laporan_anggota(id_anggota):
 if __name__ == '__main__':
     print("=" * 50)
     print("  APLIKASI KOPERASI BERBASIS WEB")
-    print("  Teknologi: Python Flask + CSV Database")
-    print("  Login : http://localhost:5000/login")
+    print("  Login : http://localhost:5000")
     print("=" * 50)
     app.run(debug=False, host='127.0.0.1', port=5000)

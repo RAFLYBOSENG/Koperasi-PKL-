@@ -6,6 +6,7 @@ os.makedirs(DATA_DIR, exist_ok=True)
 
 FILE_ANGGOTA = os.path.join(DATA_DIR, 'anggota.xlsx')
 FILE_SIMPANAN = os.path.join(DATA_DIR, 'simpanan.xlsx')
+FILE_SIMPANAN_TRANSAKSI = os.path.join(DATA_DIR, 'simpanan_transaksi.xlsx')
 FILE_PINJAMAN = os.path.join(DATA_DIR, 'pinjaman.xlsx')
 FILE_PINJAMAN_CICILAN = os.path.join(DATA_DIR, 'pinjaman_cicilan.xlsx')
 FILE_USERS = os.path.join(DATA_DIR, 'users.xlsx')
@@ -37,9 +38,14 @@ CICILAN_FIELDNAMES = [
 
 SIMPANAN_FIELDNAMES = ['id_anggota', 'total_simpanan']
 
+SIMPANAN_TRANSAKSI_FIELDNAMES = [
+    'id_transaksi', 'id_anggota', 'no_anggota', 'nama_anggota',
+    'tanggal', 'jenis_simpanan', 'jumlah', 'keterangan', 'diajukan_oleh',
+]
+
 PINJAMAN_FIELDNAMES = [
     'id_pinjaman', 'id_anggota', 'nama_anggota', 'no_anggota',
-    'jenis_pinjaman', 'plafon', 'tenor_bulan', 'bunga_persen',
+    'jenis_pinjaman', 'jenis_simpanan', 'plafon', 'tenor_awal', 'tenor_bulan', 'bunga_persen',
     'total_bayar', 'cicilan_per_bulan', 'sisa_pinjaman',
     'tanggal_pengajuan', 'status', 'tanggal_lunas',
 ]
@@ -58,7 +64,7 @@ JENIS_PINJAMAN = {
     'Jangka Panjang': {'bunga': 0.8, 'tenor': 24},
     'Jangka Pendek': {'bunga': 1.5, 'tenor': 12},
     'Solusi Cepat': {'bunga': 2.0, 'tenor': 2},
-    'Modal Usaha': {'bunga': 0.5, 'tenor': 60},
+    'Modal Usaha': {'bunga': 0.5, 'tenor': 160},
 }
 
 JENIS_PINJAMAN_CHOICES = [

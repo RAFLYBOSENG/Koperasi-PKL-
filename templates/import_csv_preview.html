@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Pratinjau Import CSV/Excel - Koperasi{% endblock %}
+{% block title %}Pratinjau Import Excel - Koperasi{% endblock %}
 {% block content %}
 <div class="row justify-content-center">
     <div class="col-lg-10">
@@ -13,6 +13,8 @@
                     <strong>Mode overwrite</strong>: jumlah simpanan ringkasan (Manasuka) diganti; pinjaman aktif terbaru — pokok diganti, tenor mengikuti data sistem, sisa disesuaikan dengan pembayaran yang sudah masuk.
                     <br>
                     <strong>Mode append</strong>: tambah ke jumlah simpanan dan pokok pinjaman aktif; tenor tidak berubah.
+                    <br>
+                    <strong>Kunci validasi</strong>: <code>no_anggota</code> dapat dipakai manual seperti NIK untuk mencocokkan data anggota.
                 </div>
                 <div class="mb-3">
                     <span class="small text-muted me-2">Kolom terdeteksi:</span>

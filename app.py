@@ -10,9 +10,6 @@ if __name__ == '__main__':
 
     print('=' * 50)
     print('  APLIKASI KOPERASI BERBASIS WEB')
-    print('  Server bootstrap: app.py')
-    print('  Sistem inti: koperasi_system/app_system.py')
-    print(f'  Beranda: http://{host}:{port}/')
-    print(f'  Login : http://{host}:{port}/login')
+    print('  Milik BBPVP BANDUNG')
     print('=' * 50)
     app.run(debug=debug, host=host, port=port)

@@ -86,8 +86,8 @@
             </div>
             <div class="card-body">
                 <p class="small text-muted mb-3">
-                    Saat ini pencatatan simpanan menggunakan mode saldo per anggota. Nilai dashboard dialokasikan ke Manasuka,
-                    sedangkan kategori lain disiapkan untuk pengembangan berikutnya.
+                    Nilai dashboard dihitung dari transaksi simpanan per jenis. Jika ada data lama yang belum punya rincian,
+                    selisihnya tetap dipertahankan agar total saldo konsisten.
                 </p>
                 <div class="row">
                     {% for jenis, jumlah in simpanan_per_jenis.items() %}
@@ -106,30 +106,42 @@
     <div class="col-md-6">
         <div class="card border-0 shadow-sm">
             <div class="card-header bg-white">
-                <h5 class="mb-0"><i class="fas fa-history me-2 text-primary"></i>Transaksi Terakhir</h5>
+                <h5 class="mb-0"><i class="fas fa-history me-2 text-primary"></i>Semua Transaksi</h5>
             </div>
             <div class="card-body p-0">
+                <div class="px-3 pt-3 d-flex flex-wrap gap-2 align-items-center">
+                    <button type="button" class="btn btn-sm btn-primary active" data-transaksi-filter="all">Semua</button>
+                    <button type="button" class="btn btn-sm btn-outline-success" data-transaksi-filter="Simpanan">Simpanan</button>
+                    <button type="button" class="btn btn-sm btn-outline-warning" data-transaksi-filter="Pinjaman">Pinjaman</button>
+                    <button type="button" class="btn btn-sm btn-outline-info" data-transaksi-filter="Cicilan">Cicilan</button>
+                </div>
                 <div class="table-responsive" style="max-height: 320px; overflow-y: auto;">
-                    <table class="table table-hover mb-0">
+                    <table class="table table-hover mb-0" data-transaksi-table="true">
                         <thead class="table-light">
                             <tr>
                                 <th>Tipe</th>
                                 <th>Tanggal</th>
                                 <th>Anggota</th>
                                 <th>Keterangan</th>
+                                <th>Status</th>
                             </tr>
                         </thead>
                         <tbody>
                             {% for t in transaksi_terakhir %}
-                            <tr>
+                            <tr data-transaksi-type="{{ t['tipe'] }}">
                                 <td>
-                                    <span class="badge bg-{{ 'success' if t['tipe'] == 'Simpanan' else 'warning' }}">
+                                    <span class="badge bg-{{ 'success' if t['tipe'] == 'Simpanan' else ('warning' if t['tipe'] == 'Pinjaman' else 'info') }}">
                                         {{ t['tipe'] }}
                                     </span>
                                 </td>
                                 <td>{{ t['tanggal'] }}</td>
                                 <td>{{ t['nama'] }}</td>
                                 <td>{{ t['keterangan'] }}</td>
+                                <td>
+                                    <span class="badge bg-{{ 'secondary' if t['status'] in ['-', ''] else ('success' if t['status'] in ['Disetujui', 'Cicilan diterima'] else ('warning text-dark' if t['status'] == 'Menunggu' else ('danger' if t['status'] in ['Ditolak', 'Gagal Bayar'] else 'info'))) }}">
+                                        {{ t['status'] }}
+                                    </span>
+                                </td>
                             </tr>
                             {% endfor %}
                         </tbody>

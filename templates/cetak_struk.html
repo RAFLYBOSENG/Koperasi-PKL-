@@ -35,6 +35,33 @@
             </table>
         </div>
 
+        <div class="mb-4">
+            <table class="table table-sm table-bordered mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>Tanggal</th>
+                        <th>Jenis</th>
+                        <th>Keterangan</th>
+                        <th class="text-end">Nominal</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in simpanan_transaksi[:10] %}
+                    <tr>
+                        <td>{{ t.get('tanggal', '-') }}</td>
+                        <td>{{ t.get('jenis_simpanan', 'Manasuka') }}</td>
+                        <td>{{ t.get('keterangan', '-') }}</td>
+                        <td class="text-end">Rp {{ "{:,.0f}".format((t.get('jumlah', 0)|float)) }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="4" class="text-center text-muted">Belum ada riwayat transaksi simpanan.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+
         <!-- Saldo Pinjaman -->
         <h5 class="text-warning"><i class="fas fa-hand-holding-dollar me-2"></i>Pinjaman</h5>
         <div>
@@ -50,7 +77,10 @@
                         <td class="text-end">Rp {{ "{:,.0f}".format(p['plafon']|float) }}</td>
                         <td>{{ p['tenor_bulan'] }}</td>
                         <td>{{ p['jenis_pinjaman'] or '-' }}</td>
-                        <td class="text-end">Rp {{ "{:,.0f}".format(p['cicilan_per_bulan']|float) }}</td>
+                        <td class="text-end">
+                            Rp {{ "{:,.0f}".format(p['cicilan_per_bulan']|float) }}
+                            <br><small class="text-muted">{{ "{:.2f}".format(p['bunga_persen']|float) }}%/bln</small>
+                        </td>
                         <td class="text-end">
                             {% if p['saldo_diterima'] %}
                                 Rp {{ "{:,.0f}".format(p['saldo_diterima']|float) }}
