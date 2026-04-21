@@ -49,7 +49,7 @@
                         <label class="form-label">Jenis pinjaman</label>
                         <select name="jenis_pinjaman" id="selectJenisPinjaman" class="form-select" required>
                             {% set jenis_labels = {
-                                'Solusi Cepat': 'Solusi Cepat (1-2 bln | 2.0% | maks Rp 3.000.000)',
+                                'Solusi Cepat': 'Solusi Cepat (1-2 bln | bunga 2.0% | jasa 2% | maks Rp 3.000.000)',
                                 'Jangka Pendek': 'Jangka Pendek (1-12 bln | 1.5%)',
                                 'Jangka Panjang': 'Jangka Panjang (13-24 bln 0.80% / 25-120 bln 0.75%)',
                                 'Modal Usaha': 'Modal Usaha (1-120 bln | 0.50%)'
@@ -251,30 +251,60 @@
                         <thead class="table-light">
                             <tr>
                                 <th>No</th>
-                                <th>No Anggota</th>
-                                <th>Nama</th>
-                                <th>Total Pengajuan</th>
-                                <th>Pinjaman Aktif</th>
-                                <th>Jenis Pinjaman Pernah Diambil</th>
+                                <th>No Anggota + Nama</th>
+                                <th>Jenis</th>
+                                <th>Pinjaman</th>
+                                <th>Tenor</th>
+                                <th>Provisi</th>
+                                <th>Cicilan/Bln</th>
+                                <th>Status</th>
                             </tr>
                         </thead>
                         <tbody>
-                            {% for r in riwayat_pinjaman_anggota %}
+                            {% for r in pinjaman %}
                             <tr>
                                 <td>{{ loop.index }}</td>
-                                <td><span class="badge bg-info">{{ r['no_anggota'] }}</span></td>
-                                <td>{{ r['nama_anggota'] }}</td>
-                                <td>{{ r['total_pengajuan'] }}</td>
-                                <td>{{ r['total_aktif'] }}</td>
                                 <td>
-                                    {% for jenis in r['jenis_items'] %}
-                                    <span class="badge bg-primary me-1 mb-1">{{ jenis }}</span>
-                                    {% endfor %}
+                                    <span class="badge bg-info">{{ r['no_anggota'] }}</span><br>
+                                    <small>{{ r['nama_anggota'] }}</small>
+                                </td>
+                                <td><span class="badge bg-primary">{{ r['jenis_pinjaman'] }}</span></td>
+                                <td class="fw-bold">Rp {{ "{:,.0f}".format(r['plafon']|float) }}</td>
+                                <td>{{ r['tenor_bulan'] }} bln</td>
+                                <td>
+                                    {% set provisi_nominal_hist = r.get('provisi_nominal', 0)|float %}
+                                    {% if provisi_nominal_hist > 0 %}
+                                    <span class="text-warning fw-semibold">Rp {{ "{:,.0f}".format(provisi_nominal_hist) }}</span>
+                                    {% else %}
+                                    <span class="text-muted">Rp 0</span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if r['jenis_pinjaman'] == 'Solusi Cepat' %}
+                                    <span class="text-muted">-</span>
+                                    {% else %}
+                                    Rp {{ "{:,.0f}".format(r['cicilan_per_bulan']|float) }}
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if r['telat_bayar'] %}
+                                    <span class="badge bg-danger">Telat Bayar</span>
+                                    {% elif r['status'] == 'Disetujui' %}
+                                    <span class="badge bg-success">Aktif</span>
+                                    {% elif r['status'] == 'Lunas' %}
+                                    <span class="badge bg-secondary">Lunas</span>
+                                    {% elif r['status'] == 'Menunggu' %}
+                                    <span class="badge bg-warning text-dark">Menunggu</span>
+                                    {% elif r['status'] == 'Ditolak' %}
+                                    <span class="badge bg-danger">Ditolak</span>
+                                    {% else %}
+                                    <span class="badge bg-warning">{{ r['status'] }}</span>
+                                    {% endif %}
                                 </td>
                             </tr>
                             {% else %}
                             <tr>
-                                <td colspan="6" class="text-center text-muted">Belum ada histori pinjaman anggota.</td>
+                                <td colspan="8" class="text-center text-muted">Belum ada histori pinjaman anggota.</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -385,7 +415,7 @@
 const LOAN_RULES = {
     'Solusi Cepat': {
         ranges: [{ min: 1, max: 2, bunga: 2.0 }],
-        info: 'Solusi Cepat: tenor 1-2 bulan, bunga flat 2.0%/bulan, maks Rp 3.000.000, bayar hanya via admin.'
+        info: 'Solusi Cepat: tenor 1-2 bulan, bunga flat 2.0%/bulan + jasa 2%, maks Rp 3.000.000, bayar hanya via admin.'
     },
     'Jangka Pendek': {
         ranges: [{ min: 1, max: 12, bunga: 1.5 }],

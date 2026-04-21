@@ -871,11 +871,14 @@ def provisi_persen_dari_tenor(tenor_bulan: int) -> float:
 def provisi_persen_dari_pinjaman(jenis_pinjaman: str, tenor_bulan: int) -> float:
     """Provisi per jenis pinjaman.
 
+    - Solusi Cepat: selalu 2%
     - Modal Usaha: selalu 2%
     - Jangka Panjang: 2% jika tenor >= 13 bulan
     - Jenis lain: 0%
     """
     jenis = (jenis_pinjaman or '').strip().lower()
+    if jenis == 'solusi cepat':
+        return PROVISI_RATE_LONG_TENOR * 100
     if jenis == 'modal usaha':
         return PROVISI_RATE_LONG_TENOR * 100
     if jenis == 'jangka panjang':
@@ -3008,7 +3011,7 @@ def konfirmasi_pinjaman(id_pinjaman):
             # Ubah status menjadi Disetujui
             p['status'] = 'Disetujui'
             
-            # Provisi Jangka Panjang dipotong dari dana cair, bukan ditambahkan ke cicilan.
+            # Provisi dipotong dari dana cair, bukan ditambahkan ke cicilan.
             try:
                 jenis_pinjaman = (p.get('jenis_pinjaman') or '').strip()
                 plafon = float(p.get('plafon') or 0)
