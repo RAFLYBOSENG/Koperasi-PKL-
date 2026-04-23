@@ -25,6 +25,11 @@
                     <span class="badge bg-warning text-dark">tidak ada</span>
                     {% endif %}
                 </div>
+                {% if has_errors %}
+                <div class="alert alert-danger py-2">
+                    Ditemukan baris tidak valid. Import akan dibatalkan sampai semua error diperbaiki.
+                </div>
+                {% endif %}
                 <div class="table-responsive mb-4" style="max-height: 360px; overflow-y: auto;">
                     <table class="table table-bordered table-sm align-middle">
                         <thead class="table-light">
@@ -33,6 +38,8 @@
                                 <th>NIK</th>
                                 <th>Nama</th>
                                 <th>No HP</th>
+                                <th>Jenis Pinjaman</th>
+                                <th>Jenis Simpanan</th>
                                 <th>Simpanan</th>
                                 <th>Pinjaman</th>
                                 <th>Tenor</th>
@@ -46,6 +53,8 @@
                                 <td>{{ r.nik }}</td>
                                 <td>{{ r.nama }}</td>
                                 <td>{{ r.no_hp }}</td>
+                                <td>{{ r.jenis_pinjaman or '-' }}</td>
+                                <td>{{ r.jenis_simpanan or '-' }}</td>
                                 <td>{% if r.simpanan is not none %}{{ "{:,.0f}".format(r.simpanan) }}{% else %}-{% endif %}</td>
                                 <td>{% if r.pinjaman is not none %}{{ "{:,.0f}".format(r.pinjaman) }}{% else %}-{% endif %}</td>
                                 <td>{% if r.tenor_bulan is not none %}{{ r.tenor_bulan }} bulan{% else %}-{% endif %}</td>
@@ -72,7 +81,7 @@
                         </select>
                     </div>
                     <div class="col-md-8">
-                        <button type="submit" class="btn btn-success me-2" onclick="return confirm('Jalankan import dengan mode yang dipilih?')">
+                        <button type="submit" class="btn btn-success me-2" {% if has_errors %}disabled{% endif %} onclick="return confirm('Jalankan import dengan mode yang dipilih?')">
                             <i class="fas fa-check me-1"></i>Eksekusi import
                         </button>
                         <a href="{{ url_for('halaman_import_csv_anggota') }}" class="btn btn-outline-secondary">Batal</a>

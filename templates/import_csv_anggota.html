@@ -10,8 +10,9 @@
             <div class="card-body">
                 <p class="text-muted small mb-3">
                     Header fleksibel (boleh acak urutan kolom), kolom wajib: <strong>nik</strong>.
-                    Disarankan kolom terpisah: <code>nama,nik,no_anggota,no hp,alamat,simpanan,pinjaman,tenor_bulan</code> (tenor opsional).
+                    Disarankan kolom terpisah: <code>nama,nik,no_anggota,no hp,alamat,jenis_pinjaman,jenis_simpanan,simpanan,pinjaman,tenor_bulan</code> (tenor opsional).
                     Jika tersedia, <code>no_anggota</code> juga bisa dipakai sebagai kunci manual untuk validasi data anggota.
+                    Kolom <code>jenis_pinjaman</code> memakai pilihan dropdown, sedangkan <code>jenis_simpanan</code> memakai pilihan simpanan.
                     Sistem tidak menerima format satu kolom gabungan.
                 </p>
                 <a href="{{ url_for('download_sample_csv_anggota') }}" class="btn btn-outline-secondary btn-sm mb-3">

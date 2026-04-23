@@ -220,7 +220,9 @@
                                                     data-bs-target="#modalBayarUser"
                                                     data-id-pinjaman="{{ p['id_pinjaman'] }}"
                                                     data-nama="{{ p['nama_anggota'] }}"
-                                                    data-no-anggota="{{ p['no_anggota'] }}">
+                                                    data-no-anggota="{{ p['no_anggota'] }}"
+                                                    data-cicilan="{{ p['cicilan_per_bulan'] }}"
+                                                    data-sisa="{{ p['sisa_pinjaman'] }}">
                                                 <i class="fas fa-money-bill-wave me-1"></i>Ajukan Bayar
                                             </button>
                                             {% endif %}
@@ -334,6 +336,8 @@
                                 <th>Nama</th>
                                 <th>Jumlah</th>
                                 <th>Metode</th>
+                                <th>Status Trx</th>
+                                <th>VA</th>
                                 <th>Keterangan</th>
                                 <th>Aksi</th>
                             </tr>
@@ -347,6 +351,12 @@
                                 <td>{{ c['nama_anggota'] }}</td>
                                 <td>Rp {{ "{:,.0f}".format(c['jumlah']|float) }}</td>
                                 <td class="small">{{ c.get('metode_pembayaran', '') or '-' }}</td>
+                                <td class="small">
+                                    <span class="badge bg-{{ 'warning text-dark' if c.get('status_transaksi') in ['Menunggu Pembayaran', 'Menunggu Verifikasi'] else ('success' if c.get('status_transaksi') == 'Berhasil' else ('danger' if c.get('status_transaksi') in ['Gagal', 'Expired'] else 'secondary')) }}">
+                                        {{ c.get('status_transaksi', 'Menunggu Verifikasi') }}
+                                    </span>
+                                </td>
+                                <td class="small"><code>{{ c.get('va_number', '-') or '-' }}</code></td>
                                 <td class="small">{{ c['keterangan'] }}</td>
                                 <td>
                                     <a href="/pinjaman/cicilan/konfirmasi/{{ c['id_cicilan'] }}" class="btn btn-sm btn-success"
@@ -361,7 +371,7 @@
                             </tr>
                             {% else %}
                             <tr id="rowCicilanKosong">
-                                <td colspan="8" class="text-center text-muted">Belum ada pengajuan cicilan menunggu.</td>
+                                <td colspan="10" class="text-center text-muted">Belum ada pengajuan cicilan menunggu.</td>
                             </tr>
                             {% endfor %}
                         </tbody>
@@ -375,35 +385,163 @@
 
 {% if not is_admin %}
 <div class="modal fade" id="modalBayarUser" tabindex="-1" aria-hidden="true">
-    <div class="modal-dialog">
+    <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
-                <h6 class="modal-title">Ajukan pembayaran cicilan</h6>
+                <h6 class="modal-title"><i class="fas fa-credit-card me-2 text-primary"></i>Ajuan Bayar</h6>
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
             </div>
-            <form id="formAjukanCicilanUser" method="POST">
+            <form id="formAjukanCicilanUser" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="idempotency_key" id="inputIdempotencyKey" value="">
                 <div class="modal-body">
-                    <p class="small text-muted mb-2">Pilih saluran pembayaran / transfer (akan diverifikasi admin).</p>
-                    <p class="small mb-2">
-                        <span class="badge bg-info" id="modalNoAnggotaBayar">-</span>
-                        <span id="modalNamaBayar" class="fw-semibold ms-1"></span>
-                    </p>
-                    <div class="mb-3">
-                        <label class="form-label">Metode / channel</label>
-                        <select name="metode_pembayaran" class="form-select" required>
-                            {% for m in metode_bayar_choices %}
-                            <option value="{{ m }}">{{ m }}</option>
-                            {% endfor %}
-                        </select>
+                    <style>
+                        .pay-card {
+                            border: 0;
+                            border-radius: 12px;
+                            box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+                        }
+                        .pay-subtitle { color: #1d4e89; font-weight: 800; }
+                        .pay-muted { color: #64748b; }
+                        .pay-amount { font-weight: 800; color: #0f172a; }
+                        .pay-chip { background: rgba(29, 78, 137, 0.10); color: #1d4e89; border-radius: 999px; padding: 4px 10px; font-weight: 700; }
+                        .qr-wrap {
+                            border: 1px dashed #cbd5e1;
+                            border-radius: 12px;
+                            background: linear-gradient(180deg, rgba(29,78,137,0.03), rgba(22,163,74,0.03));
+                            min-height: 220px;
+                            display: flex;
+                            align-items: center;
+                            justify-content: center;
+                        }
+                        .bank-card {
+                            border: 1px solid #eef2f7;
+                            border-radius: 12px;
+                        }
+                        .btn-primary-soft {
+                            background: rgba(29, 78, 137, 0.10);
+                            border: 1px solid rgba(29, 78, 137, 0.20);
+                            color: #1d4e89;
+                        }
+                    </style>
+
+                    <div class="card pay-card mb-3">
+                        <div class="card-body">
+                            <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+                                <div>
+                                    <div class="small pay-muted mb-1">Identitas Peminjam</div>
+                                    <div class="d-flex flex-wrap align-items-center gap-2">
+                                        <span class="pay-chip" id="modalNoAnggotaBayar">-</span>
+                                        <span id="modalNamaBayar" class="fw-semibold"></span>
+                                    </div>
+                                </div>
+                                <div class="text-end">
+                                    <div class="small pay-muted mb-1">Tagihan dibayar sekarang</div>
+                                    <div class="h5 mb-0 pay-amount" id="modalNominalBayar">Rp -</div>
+                                    <div class="small pay-muted" id="modalNominalHint">Cicilan berjalan (verifikasi admin)</div>
+                                </div>
+                            </div>
+                        </div>
                     </div>
-                    <div class="mb-0">
-                        <label class="form-label">Detail (opsional)</label>
-                        <input type="text" name="detail_pembayaran" class="form-control" placeholder="Mis. BCA a.n. ..., kode bayar Indomaret, nomor Dana">
+
+                    <div class="mb-3">
+                        <label class="form-label pay-subtitle">Pilihan Bayar</label>
+                        <select name="metode_pembayaran" class="form-select" id="selectMetodeBayar" required>
+                            <option value="" selected>-- Pilih metode / channel --</option>
+                            <option value="QRIS">QRIS</option>
+                            <option value="Transfer Bank">Transfer Bank</option>
+                        </select>
+                        <div class="form-text">Metode pembayaran akan dicatat dan diverifikasi admin.</div>
+                    </div>
+
+                    <div id="payEmptyState" class="alert alert-light border mb-3">
+                        <div class="d-flex gap-2">
+                            <i class="fas fa-circle-info text-primary mt-1"></i>
+                            <div>
+                                <div class="fw-semibold">Pilih metode pembayaran untuk melanjutkan.</div>
+                                <div class="small text-muted">QRIS untuk scan cepat, atau Transfer Bank dengan unggah bukti.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- QRIS -->
+                    <div id="panelQRIS" class="d-none">
+                        <div class="card pay-card mb-3">
+                            <div class="card-body">
+                                <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+                                    <div>
+                                        <div class="pay-subtitle mb-1">Pembayaran via QRIS</div>
+                                        <div class="small pay-muted">Scan kode QR di bawah ini melalui aplikasi M-Banking atau E-Wallet Anda.</div>
+                                    </div>
+                                    <div class="small">
+                                        <span class="text-muted">Kadaluarsa:</span>
+                                        <span class="fw-semibold" id="qrisExpiredIn">--:--</span>
+                                    </div>
+                                </div>
+                                <div class="qr-wrap mt-3" aria-label="QRIS placeholder">
+                                    <div id="qrisSvgHolder"></div>
+                                </div>
+                                <div class="d-flex gap-2 mt-3">
+                                    <button type="button" class="btn btn-primary-soft btn-sm" id="btnDownloadQR">
+                                        <i class="fas fa-download me-1"></i>Download QR
+                                    </button>
+                                    <button type="button" class="btn btn-outline-secondary btn-sm" id="btnRefreshQR">
+                                        <i class="fas fa-rotate me-1"></i>Refresh
+                                    </button>
+                                </div>
+                                <input type="hidden" name="detail_pembayaran" id="inputDetailPembayaran" value="">
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Transfer -->
+                    <div id="panelTransfer" class="d-none">
+                        <div class="card pay-card mb-3">
+                            <div class="card-body">
+                                <div class="pay-subtitle mb-1">Transfer Bank</div>
+                                <div class="small pay-muted mb-3">Gunakan rekening tujuan koperasi di bawah ini. Setelah transfer, unggah bukti untuk mempercepat verifikasi.</div>
+
+                                <div class="row g-3">
+                                    <div class="col-md-6">
+                                        <div class="bank-card p-3 h-100">
+                                            <div class="small pay-muted mb-1">Rekening Pengirim (Anda)</div>
+                                            <div class="fw-semibold" id="userBankInfo">-</div>
+                                            <div class="small text-muted mt-1" id="userBankMaskInfo"></div>
+                                        </div>
+                                    </div>
+                                    <div class="col-md-6">
+                                        <div class="bank-card p-3 h-100">
+                                            <div class="small pay-muted mb-1">Rekening Tujuan (Koperasi)</div>
+                                            <div class="fw-semibold">{{ koperasi_rekening.nama_bank }}</div>
+                                            <div class="d-flex align-items-center justify-content-between gap-2 mt-1">
+                                                <div class="fw-bold text-primary" id="rekeningTujuanText">{{ koperasi_rekening.no_rekening }}</div>
+                                                <button type="button" class="btn btn-sm btn-primary-soft" id="btnCopyRekening">
+                                                    <i class="fas fa-copy me-1"></i>Salin
+                                                </button>
+                                            </div>
+                                            <div class="small text-muted mt-1">a.n. {{ koperasi_rekening.atas_nama }}</div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                <div class="mt-3">
+                                    <label class="form-label">Unggah Bukti Transfer</label>
+                                    <input type="file" class="form-control" name="bukti_transfer" id="inputBuktiTransfer" accept="image/*">
+                                    <div class="form-text">Format gambar: PNG/JPG/WEBP. Disarankan foto yang jelas.</div>
+                                </div>
+
+                                <div class="mt-3">
+                                    <label class="form-label">Catatan (opsional)</label>
+                                    <input type="text" name="detail_pembayaran_transfer" class="form-control" placeholder="Contoh: nama bank pengirim, waktu transfer, keterangan tambahan">
+                                </div>
+                            </div>
+                        </div>
                     </div>
                 </div>
                 <div class="modal-footer">
                     <button type="button" class="btn btn-secondary btn-sm" data-bs-dismiss="modal">Batal</button>
-                    <button type="submit" class="btn btn-primary btn-sm">Kirim pengajuan</button>
+                    <button type="submit" class="btn btn-primary">
+                        <i class="fas fa-paper-plane me-1"></i>Kirim Ajuan
+                    </button>
                 </div>
             </form>
         </div>
@@ -607,10 +745,169 @@ if (tombolAjukanBayar.length && formAjukanCicilanUser) {
             const idPinjaman = this.getAttribute('data-id-pinjaman') || '';
             const nama = this.getAttribute('data-nama') || '';
             const noAnggota = this.getAttribute('data-no-anggota') || '';
+            const cicilan = parseFloat(this.getAttribute('data-cicilan') || '0') || 0;
+            const sisa = parseFloat(this.getAttribute('data-sisa') || '0') || 0;
+            const tagihan = Math.max(Math.min(cicilan || 0, sisa || 0), 0);
+            const idem = `${idPinjaman}-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
             formAjukanCicilanUser.action = `/pinjaman/ajukan-cicilan/${idPinjaman}`;
             document.getElementById('modalNamaBayar').textContent = nama;
             document.getElementById('modalNoAnggotaBayar').textContent = noAnggota;
+            const idemEl = document.getElementById('inputIdempotencyKey');
+            if (idemEl) idemEl.value = idem;
+            const nominalEl = document.getElementById('modalNominalBayar');
+            if (nominalEl) nominalEl.textContent = tagihan > 0 ? `Rp ${Math.floor(tagihan).toLocaleString('id-ID')}` : 'Rp -';
+
+            // Reset state setiap modal dibuka
+            const selectMetode = document.getElementById('selectMetodeBayar');
+            if (selectMetode) selectMetode.value = '';
+            setPaymentPanels('');
+            initQrisPlaceholder({ idPinjaman, noAnggota, nama, tagihan });
+            fillUserBankInfo();
         });
+    });
+}
+
+function setPaymentPanels(metode) {
+    const empty = document.getElementById('payEmptyState');
+    const qris = document.getElementById('panelQRIS');
+    const trf = document.getElementById('panelTransfer');
+    if (!empty || !qris || !trf) return;
+    const m = (metode || '').trim();
+    if (!m) {
+        empty.classList.remove('d-none');
+        qris.classList.add('d-none');
+        trf.classList.add('d-none');
+        return;
+    }
+    empty.classList.add('d-none');
+    if (m === 'QRIS') {
+        qris.classList.remove('d-none');
+        trf.classList.add('d-none');
+    } else if (m === 'Transfer Bank') {
+        trf.classList.remove('d-none');
+        qris.classList.add('d-none');
+    } else {
+        // fallback
+        qris.classList.add('d-none');
+        trf.classList.add('d-none');
+        empty.classList.remove('d-none');
+    }
+}
+
+const selectMetodeBayar = document.getElementById('selectMetodeBayar');
+if (selectMetodeBayar) {
+    selectMetodeBayar.addEventListener('change', function () {
+        setPaymentPanels(this.value);
+    });
+}
+
+function maskRekening(raw) {
+    const digits = String(raw || '').replace(/\D/g, '');
+    if (!digits) return '';
+    if (digits.length <= 6) return digits.replace(/.(?=.{2})/g, 'x');
+    const head = digits.slice(0, 3);
+    const tail = digits.slice(-3);
+    return `${head}-xxxx-${tail}`;
+}
+
+function fillUserBankInfo() {
+    const el = document.getElementById('userBankInfo');
+    const maskEl = document.getElementById('userBankMaskInfo');
+    if (!el || !maskEl) return;
+    const bank = '{{ (anggota[0]["nama_bank"] if anggota|length > 0 else "")|e }}';
+    const rek = '{{ (anggota[0]["no_rekening"] if anggota|length > 0 else "")|e }}';
+    if (bank || rek) {
+        el.textContent = `${bank || 'Bank'} • ${maskRekening(rek) || '-'}`;
+        maskEl.textContent = rek ? 'Nomor rekening disamarkan untuk privasi.' : '';
+    } else {
+        el.textContent = 'Rekening belum terdaftar di profil anggota.';
+        maskEl.textContent = 'Jika perlu, minta admin melengkapi data rekening Anda.';
+    }
+}
+
+let qrisTimerHandle = null;
+let qrisExpiryAt = 0;
+
+function initQrisPlaceholder(ctx) {
+    const holder = document.getElementById('qrisSvgHolder');
+    if (!holder) return;
+    const id = String(ctx?.idPinjaman || '').slice(0, 10);
+    const amount = Math.floor(Number(ctx?.tagihan || 0));
+    const danaTarget = '{{ qris_dana_target|e }}';
+    const payload = `DANA:${String(danaTarget || '').replace(/\\D/g, '')}|AMOUNT:${amount}|REF:${id}`;
+    const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&margin=8&data=${encodeURIComponent(payload)}`;
+    holder.innerHTML = `
+        <div class="text-center">
+            <img id="qrisImg" src="${qrUrl}" alt="QR Pembayaran DANA Admin" width="240" height="240" class="rounded border">
+            <div class="small text-muted mt-2">Tujuan DANA: ${escapeHtml(danaTarget)} • Ref ${escapeHtml(id)}</div>
+        </div>
+    `;
+    startQrisTimer(10 * 60); // 10 menit
+    const detail = document.getElementById('inputDetailPembayaran');
+    if (detail) detail.value = `QRIS->DANA ${danaTarget} | REF ${id} | Nominal Rp ${amount.toLocaleString('id-ID')}`;
+}
+
+function startQrisTimer(seconds) {
+    qrisExpiryAt = Date.now() + (seconds * 1000);
+    const el = document.getElementById('qrisExpiredIn');
+    if (!el) return;
+    if (qrisTimerHandle) clearInterval(qrisTimerHandle);
+    const tick = () => {
+        const diff = Math.max(qrisExpiryAt - Date.now(), 0);
+        const s = Math.floor(diff / 1000);
+        const mm = String(Math.floor(s / 60)).padStart(2, '0');
+        const ss = String(s % 60).padStart(2, '0');
+        el.textContent = `${mm}:${ss}`;
+        if (s <= 0) {
+            clearInterval(qrisTimerHandle);
+            qrisTimerHandle = null;
+        }
+    };
+    tick();
+    qrisTimerHandle = setInterval(tick, 1000);
+}
+
+const btnRefreshQR = document.getElementById('btnRefreshQR');
+if (btnRefreshQR) {
+    btnRefreshQR.addEventListener('click', function () {
+        // Refresh placeholder + reset timer
+        initQrisPlaceholder({ idPinjaman: 'refresh', tagihan: 0 });
+    });
+}
+
+const btnDownloadQR = document.getElementById('btnDownloadQR');
+if (btnDownloadQR) {
+    btnDownloadQR.addEventListener('click', function () {
+        const img = document.getElementById('qrisImg');
+        if (!img || !img.src) return;
+        const a = document.createElement('a');
+        a.href = img.src;
+        a.download = 'qris-dana-admin.png';
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+    });
+}
+
+const btnCopyRekening = document.getElementById('btnCopyRekening');
+if (btnCopyRekening) {
+    btnCopyRekening.addEventListener('click', async function () {
+        const textEl = document.getElementById('rekeningTujuanText');
+        const value = (textEl ? textEl.textContent : '').trim();
+        if (!value) return;
+        try {
+            await navigator.clipboard.writeText(value);
+            this.textContent = 'Tersalin';
+            setTimeout(() => { this.innerHTML = '<i class="fas fa-copy me-1"></i>Salin'; }, 1200);
+        } catch (e) {
+            // fallback
+            const tmp = document.createElement('input');
+            tmp.value = value;
+            document.body.appendChild(tmp);
+            tmp.select();
+            document.execCommand('copy');
+            tmp.remove();
+        }
     });
 }
 
@@ -636,7 +933,7 @@ function renderCicilanMenunggu(items) {
     badge.textContent = `${items.length} pengajuan`;
 
     if (!items.length) {
-        tbody.innerHTML = '<tr id="rowCicilanKosong"><td colspan="8" class="text-center text-muted">Belum ada pengajuan cicilan menunggu.</td></tr>';
+        tbody.innerHTML = '<tr id="rowCicilanKosong"><td colspan="10" class="text-center text-muted">Belum ada pengajuan cicilan menunggu.</td></tr>';
         return;
     }
 
@@ -648,6 +945,12 @@ function renderCicilanMenunggu(items) {
             <td>${escapeHtml(c.nama_anggota)}</td>
             <td>Rp ${formatRupiahNumber(c.jumlah)}</td>
             <td class="small">${escapeHtml(c.metode_pembayaran || '-')}</td>
+            <td class="small">
+                <span class="badge ${((c.status_transaksi || '').includes('Menunggu')) ? 'bg-warning text-dark' : ((c.status_transaksi || '') === 'Berhasil' ? 'bg-success' : ((c.status_transaksi || '') === 'Expired' ? 'bg-danger' : 'bg-secondary'))}">
+                    ${escapeHtml(c.status_transaksi || 'Menunggu Verifikasi')}
+                </span>
+            </td>
+            <td class="small"><code>${escapeHtml(c.va_number || '-')}</code></td>
             <td class="small">${escapeHtml(c.keterangan || '-')}</td>
             <td>
                 <a href="/pinjaman/cicilan/konfirmasi/${encodeURIComponent(c.id_cicilan)}" class="btn btn-sm btn-success"

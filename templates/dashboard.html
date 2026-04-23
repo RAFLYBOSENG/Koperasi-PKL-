@@ -10,15 +10,93 @@
 </div>
 {% endif %}
 
+<style>
+    .dashboard-font {
+        font-family: 'Inter', 'Roboto', 'Segoe UI', Arial, sans-serif;
+    }
+    .summary-card {
+        border: 0;
+        border-radius: 12px;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+    }
+    .section-card {
+        border: 0;
+        border-radius: 12px;
+        box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+    }
+    .section-header {
+        color: #1d4e89;
+        font-weight: 700;
+    }
+    .icon-box {
+        width: 56px;
+        height: 56px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+    }
+    .amount-highlight {
+        font-weight: 700;
+        color: #0f172a;
+    }
+    .category-row {
+        display: grid;
+        grid-template-columns: repeat(7, minmax(120px, 1fr));
+        gap: 12px;
+    }
+    .category-row.pinjaman-row {
+        grid-template-columns: repeat(4, minmax(150px, 1fr));
+    }
+    .category-item {
+        border: 1px solid #eef2f7;
+        border-radius: 10px;
+        padding: 14px 10px;
+        text-align: center;
+        background: #fff;
+        min-height: 140px;
+    }
+    .category-item h6 {
+        font-weight: 700;
+        margin-bottom: 6px;
+    }
+    .badge-status-disetujui { background-color: #16a34a; }
+    .badge-status-lunas { background-color: #64748b; }
+    .badge-status-ditolak { background-color: #dc2626; }
+    .badge-status-menunggu { background-color: #facc15; color: #1f2937; }
+    @media (max-width: 992px) {
+        .category-row {
+            grid-template-columns: repeat(2, minmax(140px, 1fr));
+        }
+        .category-row.pinjaman-row {
+            grid-template-columns: repeat(2, minmax(140px, 1fr));
+        }
+    }
+    @media (max-width: 576px) {
+        .category-row,
+        .category-row.pinjaman-row {
+            display: flex;
+            overflow-x: auto;
+            gap: 10px;
+            padding-bottom: 4px;
+        }
+        .category-item {
+            min-width: 165px;
+            flex: 0 0 auto;
+        }
+    }
+</style>
+
+<div class="dashboard-font">
 <div class="row g-4 mb-4">
     <!-- Total Anggota -->
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100">
+        <div class="card summary-card h-100">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
                         <p class="text-muted mb-1">Total Anggota</p>
-                        <h3 class="fw-bold mb-0">{{ total_anggota }}</h3>
+                        <h3 class="amount-highlight mb-0">{{ total_anggota }}</h3>
                     </div>
                     <div class="icon-box bg-primary bg-opacity-10">
                         <i class="fas fa-users text-primary fa-2x"></i>
@@ -29,12 +107,12 @@
     </div>
     <!-- Total Simpanan -->
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100">
+        <div class="card summary-card h-100">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
                         <p class="text-muted mb-1">Total Simpanan</p>
-                        <h3 class="fw-bold mb-0">Rp {{ "{:,.0f}".format(total_simpanan) }}</h3>
+                        <h3 class="amount-highlight mb-0">Rp {{ "{:,.0f}".format(total_simpanan) }}</h3>
                     </div>
                     <div class="icon-box bg-success bg-opacity-10">
                         <i class="fas fa-piggy-bank text-success fa-2x"></i>
@@ -45,12 +123,12 @@
     </div>
     <!-- Total Pinjaman -->
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100">
+        <div class="card summary-card h-100">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
                         <p class="text-muted mb-1">Total Pinjaman Disalurkan</p>
-                        <h3 class="fw-bold mb-0">Rp {{ "{:,.0f}".format(total_pinjaman) }}</h3>
+                        <h3 class="amount-highlight mb-0">Rp {{ "{:,.0f}".format(total_pinjaman) }}</h3>
                     </div>
                     <div class="icon-box bg-warning bg-opacity-10">
                         <i class="fas fa-hand-holding-dollar text-warning fa-2x"></i>
@@ -61,12 +139,12 @@
     </div>
     <!-- Pinjaman Beredar -->
     <div class="col-md-3">
-        <div class="card border-0 shadow-sm h-100">
+        <div class="card summary-card h-100">
             <div class="card-body">
                 <div class="d-flex justify-content-between align-items-center">
                     <div>
                         <p class="text-muted mb-1">Pinjaman Beredar</p>
-                        <h3 class="fw-bold mb-0">Rp {{ "{:,.0f}".format(total_pinjaman_beredar) }}</h3>
+                        <h3 class="amount-highlight mb-0">Rp {{ "{:,.0f}".format(total_pinjaman_beredar) }}</h3>
                     </div>
                     <div class="icon-box bg-danger bg-opacity-10">
                         <i class="fas fa-clock text-danger fa-2x"></i>
@@ -77,79 +155,197 @@
     </div>
 </div>
 
-<!-- Ringkasan Simpanan -->
-<div class="row g-4 mb-4">
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white">
-                <h5 class="mb-0"><i class="fas fa-chart-pie me-2 text-primary"></i>Simpanan per Jenis (mode saldo)</h5>
+<div class="card section-card mb-4">
+    <div class="card-header bg-white border-0">
+        <h5 class="mb-0 section-header"><i class="fas fa-chart-pie me-2"></i>Ringkasan Simpanan</h5>
+    </div>
+    <div class="card-body pt-0">
+        <p class="small text-muted mb-3">
+            Nilai dihitung dari transaksi simpanan per jenis agar saldo dashboard tetap sinkron.
+        </p>
+        <div class="category-row">
+            {% for jenis, jumlah in simpanan_per_jenis.items() %}
+            <div class="category-item">
+                <div class="mb-2">
+                    {% if jenis == 'Simpanan Pokok' %}
+                    <i class="fas fa-shield-halved fa-2x text-primary"></i>
+                    {% elif jenis == 'Simpanan Wajib' %}
+                    <i class="fas fa-calendar-check fa-2x text-success"></i>
+                    {% elif jenis == 'Simpanan Hari Koperasi' %}
+                    <i class="fas fa-flag fa-2x text-warning"></i>
+                    {% elif jenis == 'Simpanan Pensiun' %}
+                    <i class="fas fa-user-clock fa-2x text-secondary"></i>
+                    {% elif jenis == 'Simpanan Hari Raya' %}
+                    <i class="fas fa-gift fa-2x text-danger"></i>
+                    {% elif jenis == 'Simpanan Manasuka' %}
+                    <i class="fas fa-heart fa-2x text-info"></i>
+                    {% elif jenis == 'Simpanan Pendidikan' %}
+                    <i class="fas fa-graduation-cap fa-2x text-dark"></i>
+                    {% else %}
+                    <i class="fas fa-piggy-bank fa-2x text-info"></i>
+                    {% endif %}
+                </div>
+                <h6>{{ jenis }}</h6>
+                <p class="text-success fw-bold mb-0">Rp {{ "{:,.0f}".format(jumlah) }}</p>
             </div>
-            <div class="card-body">
-                <p class="small text-muted mb-3">
-                    Nilai dashboard dihitung dari transaksi simpanan per jenis. Jika ada data lama yang belum punya rincian,
-                    selisihnya tetap dipertahankan agar total saldo konsisten.
-                </p>
-                <div class="row">
-                    {% for jenis, jumlah in simpanan_per_jenis.items() %}
-                    <div class="col-4 text-center">
-                        <div class="mb-2">
-                            <i class="fas fa-{{ 'heart' if jenis == 'Manasuka' else ('star' if jenis == 'Hari Raya' else 'graduation-cap') }} fa-2x text-{{ 'primary' if jenis == 'Manasuka' else ('warning' if jenis == 'Hari Raya' else 'info') }}"></i>
-                        </div>
-                        <h5 class="fw-bold">{{ jenis }}</h5>
-                        <p class="text-success fw-bold">Rp {{ "{:,.0f}".format(jumlah) }}</p>
-                    </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="card section-card mb-4">
+    <div class="card-header bg-white border-0">
+        <h5 class="mb-0 section-header"><i class="fas fa-hand-holding-dollar me-2"></i>Ringkasan Pinjaman</h5>
+    </div>
+    <div class="card-body pt-0">
+        <div class="category-row pinjaman-row">
+            {% for jenis, jumlah in pinjaman_per_jenis.items() %}
+            <div class="category-item">
+                <div class="mb-2">
+                    {% if jenis == 'Solusi Cepat' %}
+                    <i class="fas fa-bolt fa-2x text-info"></i>
+                    {% elif jenis == 'Jangka Pendek' %}
+                    <i class="fas fa-stopwatch fa-2x text-warning"></i>
+                    {% elif jenis == 'Jangka Panjang' %}
+                    <i class="fas fa-hourglass-half fa-2x text-success"></i>
+                    {% elif jenis == 'Modal Usaha' %}
+                    <i class="fas fa-briefcase fa-2x text-primary"></i>
+                    {% else %}
+                    <i class="fas fa-coins fa-2x text-secondary"></i>
+                    {% endif %}
+                </div>
+                <h6>{{ jenis }}</h6>
+                <p class="fw-bold mb-0" style="color:#1d4e89;">Rp {{ "{:,.0f}".format(jumlah) }}</p>
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+</div>
+
+<div class="card section-card mb-4">
+    <div class="card-header bg-white border-0">
+        <h5 class="mb-0 section-header"><i class="fas fa-history me-2"></i>Semua Transaksi</h5>
+    </div>
+    <div class="card-body p-0">
+        <div class="px-3 pt-3 d-flex flex-wrap gap-2 align-items-center">
+            <button type="button" class="btn btn-sm btn-primary active" data-transaksi-filter="all">Semua</button>
+            <button type="button" class="btn btn-sm btn-outline-success" data-transaksi-filter="Simpanan">Simpanan</button>
+            <button type="button" class="btn btn-sm btn-outline-warning" data-transaksi-filter="Pinjaman">Pinjaman</button>
+            <button type="button" class="btn btn-sm btn-outline-info" data-transaksi-filter="Cicilan">Cicilan</button>
+        </div>
+        <div class="table-responsive" style="max-height: 320px; overflow-y: auto;">
+            <table class="table table-hover mb-0" data-transaksi-table="true">
+                <thead class="table-light">
+                    <tr>
+                        <th>Tipe</th>
+                        <th>Tanggal</th>
+                        <th>Anggota</th>
+                        <th>Keterangan</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in transaksi_terakhir %}
+                    <tr data-transaksi-type="{{ t['tipe'] }}">
+                        <td>
+                            <span class="badge bg-{{ 'success' if t['tipe'] == 'Simpanan' else ('warning' if t['tipe'] == 'Pinjaman' else 'info') }}">
+                                {{ t['tipe'] }}
+                            </span>
+                        </td>
+                        <td>{{ t['tanggal'] }}</td>
+                        <td>{{ t['nama'] }}</td>
+                        <td>{{ t['keterangan'] }}</td>
+                        <td>
+                            {% if t['status'] in ['Disetujui', 'Cicilan diterima'] %}
+                            <span class="badge badge-status-disetujui">{{ t['status'] }}</span>
+                            {% elif t['status'] == 'Menunggu' %}
+                            <span class="badge badge-status-menunggu">{{ t['status'] }}</span>
+                            {% elif t['status'] in ['Lunas', '-', ''] %}
+                            <span class="badge badge-status-lunas">{{ t['status'] }}</span>
+                            {% elif t['status'] in ['Ditolak', 'Gagal Bayar'] %}
+                            <span class="badge badge-status-ditolak">{{ t['status'] }}</span>
+                            {% else %}
+                            <span class="badge bg-info">{{ t['status'] }}</span>
+                            {% endif %}
+                        </td>
+                    </tr>
                     {% endfor %}
-                </div>
-            </div>
+                </tbody>
+            </table>
         </div>
     </div>
-    <div class="col-md-6">
-        <div class="card border-0 shadow-sm">
-            <div class="card-header bg-white">
-                <h5 class="mb-0"><i class="fas fa-history me-2 text-primary"></i>Semua Transaksi</h5>
-            </div>
-            <div class="card-body p-0">
-                <div class="px-3 pt-3 d-flex flex-wrap gap-2 align-items-center">
-                    <button type="button" class="btn btn-sm btn-primary active" data-transaksi-filter="all">Semua</button>
-                    <button type="button" class="btn btn-sm btn-outline-success" data-transaksi-filter="Simpanan">Simpanan</button>
-                    <button type="button" class="btn btn-sm btn-outline-warning" data-transaksi-filter="Pinjaman">Pinjaman</button>
-                    <button type="button" class="btn btn-sm btn-outline-info" data-transaksi-filter="Cicilan">Cicilan</button>
-                </div>
-                <div class="table-responsive" style="max-height: 320px; overflow-y: auto;">
-                    <table class="table table-hover mb-0" data-transaksi-table="true">
-                        <thead class="table-light">
-                            <tr>
-                                <th>Tipe</th>
-                                <th>Tanggal</th>
-                                <th>Anggota</th>
-                                <th>Keterangan</th>
-                                <th>Status</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            {% for t in transaksi_terakhir %}
-                            <tr data-transaksi-type="{{ t['tipe'] }}">
-                                <td>
-                                    <span class="badge bg-{{ 'success' if t['tipe'] == 'Simpanan' else ('warning' if t['tipe'] == 'Pinjaman' else 'info') }}">
-                                        {{ t['tipe'] }}
-                                    </span>
-                                </td>
-                                <td>{{ t['tanggal'] }}</td>
-                                <td>{{ t['nama'] }}</td>
-                                <td>{{ t['keterangan'] }}</td>
-                                <td>
-                                    <span class="badge bg-{{ 'secondary' if t['status'] in ['-', ''] else ('success' if t['status'] in ['Disetujui', 'Cicilan diterima'] else ('warning text-dark' if t['status'] == 'Menunggu' else ('danger' if t['status'] in ['Ditolak', 'Gagal Bayar'] else 'info'))) }}">
-                                        {{ t['status'] }}
-                                    </span>
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        </tbody>
-                    </table>
-                </div>
-            </div>
+</div>
+
+<div class="card section-card mb-4">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 section-header"><i class="fas fa-file-invoice-dollar me-2 text-warning"></i>{{ 'Data Pinjaman Keseluruhan' if is_admin else 'Data Pinjaman Saya' }}</h5>
+        <span class="badge bg-warning text-dark">{{ pinjaman_dashboard|length }} data</span>
+    </div>
+    <div class="card-body p-0">
+        <div class="px-3 pt-3 d-flex flex-wrap gap-2 align-items-center">
+            <span class="small text-muted me-1">Status:</span>
+            <button type="button" class="btn btn-sm btn-primary active" data-pinjaman-filter="all">Semua</button>
+            <button type="button" class="btn btn-sm btn-outline-warning" data-pinjaman-filter="Menunggu">Menunggu</button>
+            <button type="button" class="btn btn-sm btn-outline-success" data-pinjaman-filter="Disetujui">Disetujui</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary" data-pinjaman-filter="Lunas">Lunas</button>
+            <button type="button" class="btn btn-sm btn-outline-danger" data-pinjaman-filter="Ditolak">Ditolak</button>
+        </div>
+        <div class="px-3 pt-2 pb-1 d-flex flex-wrap gap-2 align-items-center">
+            <span class="small text-muted me-1">Jenis:</span>
+            <button type="button" class="btn btn-sm btn-primary active" data-pinjaman-jenis-filter="all">Semua</button>
+            <button type="button" class="btn btn-sm btn-outline-info" data-pinjaman-jenis-filter="Solusi Cepat">Solusi Cepat</button>
+            <button type="button" class="btn btn-sm btn-outline-warning" data-pinjaman-jenis-filter="Jangka Pendek">Jangka Pendek</button>
+            <button type="button" class="btn btn-sm btn-outline-success" data-pinjaman-jenis-filter="Jangka Panjang">Jangka Panjang</button>
+            <button type="button" class="btn btn-sm btn-outline-dark" data-pinjaman-jenis-filter="Modal Usaha">Modal Usaha</button>
+        </div>
+        <div class="px-3 pb-2 pt-1">
+            <input type="text" class="form-control form-control-sm" data-pinjaman-search="true" placeholder="Cari nama, no anggota, atau jenis pinjaman...">
+        </div>
+        <div class="table-responsive">
+            <table class="table table-hover mb-0" data-pinjaman-table="true">
+                <thead class="table-light">
+                    <tr>
+                        <th>Tanggal</th>
+                        <th>No Anggota</th>
+                        <th>Nama</th>
+                        <th>Jenis</th>
+                        <th>Plafon</th>
+                        <th>Sisa</th>
+                        <th>Tenor</th>
+                        <th>Status</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in pinjaman_dashboard %}
+                    <tr data-pinjaman-status="{{ p.status }}" data-pinjaman-jenis="{{ p.jenis_pinjaman }}">
+                        <td>{{ p.tanggal_pengajuan }}</td>
+                        <td>{{ p.no_anggota or '-' }}</td>
+                        <td class="fw-bold">{{ p.nama_anggota or '-' }}</td>
+                        <td>{{ p.jenis_pinjaman }}</td>
+                        <td>Rp {{ "{:,.0f}".format(p.plafon) }}</td>
+                        <td>Rp {{ "{:,.0f}".format(p.sisa_pinjaman) }}</td>
+                        <td>{{ p.tenor_bulan }} bulan</td>
+                        <td>
+                            <span class="badge {{ 'badge-status-disetujui' if p.status == 'Disetujui' else ('badge-status-menunggu' if p.status == 'Menunggu' else ('badge-status-lunas' if p.status == 'Lunas' else 'badge-status-ditolak')) }}">
+                                {{ p.status }}
+                            </span>
+                        </td>
+                    </tr>
+                    {% if loop.last %}
+                    <tr data-pinjaman-noresult="true" style="display:none;">
+                        <td colspan="8" class="text-center text-muted py-3">Data tidak ditemukan untuk filter/pencarian saat ini.</td>
+                    </tr>
+                    {% endif %}
+                    {% else %}
+                    <tr data-pinjaman-empty="true">
+                        <td colspan="8" class="text-center text-muted py-3">Belum ada data pinjaman.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
+</div>
 </div>
 
 {% if is_admin %}
@@ -169,6 +365,7 @@
                         <th>No Telp</th>
                         <th>Penghasilan/Bln</th>
                         <th>Cicilan lain/Bln</th>
+                        <th>Simpanan Pokok</th>
                         <th>No Anggota</th>
                         <th>Status</th>
                         <th>Aksi</th>
@@ -183,6 +380,7 @@
                         <td>{{ p['no_telp'] or '-' }}</td>
                         <td class="text-success small">Rp {{ "{:,.0f}".format((p.get('penghasilan_bersih', '0')|float)) }}</td>
                         <td class="small">Rp {{ "{:,.0f}".format((p.get('cicilan_lain', '0')|float)) }}</td>
+                        <td class="fw-bold text-primary">Rp {{ "{:,.0f}".format((p.get('simpanan_pokok', '500000')|float)) }}</td>
                         <td>
                             {% if p.get('no_anggota_dibuat') %}
                                 <span class="badge bg-info">{{ p.get('no_anggota_dibuat') }}</span>
@@ -212,7 +410,7 @@
                     </tr>
                     {% else %}
                     <tr>
-                        <td colspan="9" class="text-center text-muted py-3">Belum ada pengajuan anggota baru.</td>
+                        <td colspan="10" class="text-center text-muted py-3">Belum ada pengajuan anggota baru.</td>
                     </tr>
                     {% endfor %}
                 </tbody>

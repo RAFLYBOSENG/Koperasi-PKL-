@@ -30,6 +30,14 @@
                         <input type="text" name="no_telp" class="form-control" value="{{ anggota.get('no_telp', '') }}">
                     </div>
                     <div class="mb-3">
+                        <label class="form-label">No. Rekening</label>
+                        <input type="text" name="no_rekening" class="form-control" value="{{ anggota.get('no_rekening', '') }}">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nama Bank</label>
+                        <input type="text" name="nama_bank" class="form-control" value="{{ anggota.get('nama_bank', '') }}">
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">Penghasilan Bersih / Bulan (Rp)</label>
                         <input type="text" name="penghasilan_bersih" class="form-control" required
                                placeholder="Contoh: 5000000" value="{{ anggota.get('penghasilan_bersih', '0') }}">

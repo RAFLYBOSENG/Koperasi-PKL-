@@ -7,6 +7,8 @@ os.makedirs(DATA_DIR, exist_ok=True)
 FILE_ANGGOTA = os.path.join(DATA_DIR, 'anggota.xlsx')
 FILE_SIMPANAN = os.path.join(DATA_DIR, 'simpanan.xlsx')
 FILE_SIMPANAN_TRANSAKSI = os.path.join(DATA_DIR, 'simpanan_transaksi.xlsx')
+FILE_SIMPANAN_PENGAJUAN = os.path.join(DATA_DIR, 'simpanan_pengajuan.xlsx')
+FILE_IURAN_SOSIAL = os.path.join(DATA_DIR, 'iuran_sosial.xlsx')
 FILE_PINJAMAN = os.path.join(DATA_DIR, 'pinjaman.xlsx')
 FILE_PINJAMAN_CICILAN = os.path.join(DATA_DIR, 'pinjaman_cicilan.xlsx')
 FILE_USERS = os.path.join(DATA_DIR, 'users.xlsx')
@@ -25,15 +27,26 @@ METODE_BAYAR_CHOICES = (
     'Indomaret',
     'Alfamart',
     'Dana',
+    'QRIS',
     'Transfer Bank',
     'Lainnya',
 )
+
+# Info rekening tujuan koperasi (untuk transfer). Silakan isi sesuai kebutuhan.
+KOPERASI_REKENING_BANK = {
+    'nama_bank': 'DANA',
+    'no_rekening': '0881023452481',
+    'atas_nama': 'Admin Koperasi',
+}
+
+ADMIN_NOTIFICATION_EMAIL = 'shidiqper@gmail.com'
 
 CICILAN_FIELDNAMES = [
     'id_cicilan', 'id_pinjaman', 'id_anggota', 'no_anggota',
     'nama_anggota', 'jumlah', 'tanggal_pengajuan', 'status',
     'tanggal_konfirmasi', 'dikonfirmasi_oleh', 'diajukan_oleh',
     'keterangan', 'metode_pembayaran', 'detail_pembayaran',
+    'status_transaksi', 'va_number', 'idempotency_key', 'periode_tagihan', 'expires_at',
 ]
 
 SIMPANAN_FIELDNAMES = ['id_anggota', 'total_simpanan']
@@ -41,6 +54,17 @@ SIMPANAN_FIELDNAMES = ['id_anggota', 'total_simpanan']
 SIMPANAN_TRANSAKSI_FIELDNAMES = [
     'id_transaksi', 'id_anggota', 'no_anggota', 'nama_anggota',
     'tanggal', 'jenis_simpanan', 'jumlah', 'keterangan', 'diajukan_oleh',
+]
+
+SIMPANAN_PENGAJUAN_FIELDNAMES = [
+    'id_pengajuan', 'id_anggota', 'no_anggota', 'nama_anggota',
+    'tanggal_pengajuan', 'jenis_simpanan', 'jumlah', 'keterangan',
+    'status', 'tanggal_konfirmasi', 'dikonfirmasi_oleh', 'diajukan_oleh',
+]
+
+IURAN_SOSIAL_FIELDNAMES = [
+    'id_iuran', 'id_anggota', 'no_anggota', 'nama_anggota',
+    'tanggal', 'jumlah', 'keterangan', 'diajukan_oleh',
 ]
 
 PINJAMAN_FIELDNAMES = [
@@ -52,11 +76,12 @@ PINJAMAN_FIELDNAMES = [
 
 ANGGOTA_FIELDNAMES = [
     'id_anggota', 'no_anggota', 'nik', 'nama', 'alamat', 'no_telp', 'tgl_bergabung',
-    'penghasilan_bersih', 'cicilan_lain',
+    'no_rekening', 'nama_bank',
+    'penghasilan_bersih', 'cicilan_lain', 'simpanan_pokok',
 ]
 
 PENDAFTARAN_FIELDNAMES = [
-    'id_pengajuan', 'nama', 'alamat', 'no_telp', 'penghasilan_bersih', 'cicilan_lain',
+    'id_pengajuan', 'nama', 'alamat', 'no_telp', 'penghasilan_bersih', 'cicilan_lain', 'simpanan_pokok',
     'status', 'tanggal_pengajuan', 'catatan_admin', 'id_anggota_dibuat', 'no_anggota_dibuat',
 ]
 

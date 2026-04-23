@@ -44,6 +44,11 @@
                             <option value="{{ js }}">{{ js }}</option>
                             {% endfor %}
                         </select>
+                        <div class="form-text">
+                            Simpanan Pokok dicatat sekali saat validasi anggota baru. Simpanan Wajib: Rp 250.000/bulan, Simpanan Hari Koperasi: Rp 20.000/bulan,
+                            Iuran Sosial: Rp 10.000/bulan (catatan, tidak menambah saldo), Simpanan Pensiun: minimal Rp 50.000 (opsional),
+                            Simpanan Hari Raya/Manasuka/Pendidikan: minimal Rp 50.000.
+                        </div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Jumlah (Rp)</label>
@@ -51,11 +56,11 @@
                                placeholder="Contoh: 500000" oninput="formatRupiah(this)">
                     </div>
                     <button type="submit" class="btn btn-success w-100" {% if not is_admin and anggota|length == 0 %}disabled{% endif %}>
-                        <i class="fas fa-paper-plane me-1"></i>Tambah ke saldo
+                        <i class="fas fa-paper-plane me-1"></i>Ajukan Simpanan
                     </button>
                 </form>
                 <p class="small text-muted mt-2 mb-0">
-                    Simpanan langsung menambah saldo anggota pada sistem (tanpa proses konfirmasi baris).
+                    Simpanan yang menambah saldo akan masuk daftar pengajuan dan baru menambah saldo setelah dikonfirmasi admin.
                 </p>
                 {% if not is_admin and anggota|length == 0 %}
                 <div class="alert alert-danger mt-3 mb-0">
@@ -84,9 +89,13 @@
                                 <th>No</th>
                                 <th>No Anggota</th>
                                 <th>Nama</th>
-                                <th>Manasuka</th>
-                                <th>Hari Raya</th>
-                                <th>Pendidikan</th>
+                                <th>Simpanan Pokok</th>
+                                <th>Simpanan Wajib</th>
+                                <th>Simpanan Hari Koperasi</th>
+                                <th>Simpanan Pensiun</th>
+                                <th>Simpanan Hari Raya</th>
+                                <th>Simpanan Manasuka</th>
+                                <th>Simpanan Pendidikan</th>
                                 <th>Total Saldo</th>
                                 {% if is_admin %}<th>Aksi</th>{% endif %}
                             </tr>
@@ -97,8 +106,12 @@
                                 <td>{{ loop.index }}</td>
                                 <td><span class="badge bg-info">{{ s['no_anggota'] }}</span></td>
                                 <td class="fw-bold">{{ s['nama_anggota'] }}</td>
-                                <td>Rp {{ "{:,.0f}".format(s.get('saldo_manasuka', 0)|float) }}</td>
+                                <td>Rp {{ "{:,.0f}".format(s.get('saldo_pokok', 0)|float) }}</td>
+                                <td>Rp {{ "{:,.0f}".format(s.get('saldo_wajib', 0)|float) }}</td>
+                                <td>Rp {{ "{:,.0f}".format(s.get('saldo_hari_koperasi', 0)|float) }}</td>
+                                <td>Rp {{ "{:,.0f}".format(s.get('saldo_pensiun', 0)|float) }}</td>
                                 <td>Rp {{ "{:,.0f}".format(s.get('saldo_hari_raya', 0)|float) }}</td>
+                                <td>Rp {{ "{:,.0f}".format(s.get('saldo_manasuka', 0)|float) }}</td>
                                 <td>Rp {{ "{:,.0f}".format(s.get('saldo_pendidikan', 0)|float) }}</td>
                                 <td class="text-success fw-bold">Rp {{ "{:,.0f}".format(s['jumlah']|float) }}</td>
                                 {% if is_admin %}
@@ -115,6 +128,73 @@
                     </table>
                 </div>
             </div>
+        </div>
+    </div>
+</div>
+
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="fas fa-hourglass-half me-2 text-warning"></i>Daftar Pengajuan Simpanan</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>No</th>
+                        <th>Tanggal</th>
+                        <th>No Anggota</th>
+                        <th>Nama</th>
+                        <th>Jenis</th>
+                        <th>Jumlah</th>
+                        <th>Status</th>
+                        <th>Pengaju</th>
+                        {% if is_admin %}<th>Aksi</th>{% endif %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for p in pengajuan_simpanan %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td class="small">{{ p.get('tanggal_pengajuan', '-') }}</td>
+                        <td><span class="badge bg-info">{{ p.get('no_anggota', '-') }}</span></td>
+                        <td>{{ p.get('nama_anggota', '-') }}</td>
+                        <td>{{ p.get('jenis_simpanan', '-') }}</td>
+                        <td class="text-success fw-bold">Rp {{ "{:,.0f}".format((p.get('jumlah', 0)|float)) }}</td>
+                        <td>
+                            {% if p.get('status') == 'Disetujui' %}
+                                <span class="badge bg-success">Disetujui</span>
+                            {% elif p.get('status') == 'Ditolak' %}
+                                <span class="badge bg-danger">Ditolak</span>
+                            {% else %}
+                                <span class="badge bg-warning text-dark">Menunggu</span>
+                            {% endif %}
+                        </td>
+                        <td>{{ p.get('diajukan_oleh', '-') }}</td>
+                        {% if is_admin %}
+                        <td>
+                            {% if p.get('status') == 'Menunggu' %}
+                            <a href="/simpanan/konfirmasi/{{ p.get('id_pengajuan') }}" class="btn btn-sm btn-success mb-1"
+                               onclick="return confirm('Setujui pengajuan simpanan ini?')">
+                                <i class="fas fa-check"></i>
+                            </a>
+                            <a href="/simpanan/tolak/{{ p.get('id_pengajuan') }}" class="btn btn-sm btn-danger mb-1"
+                               onclick="return confirm('Tolak pengajuan simpanan ini?')">
+                                <i class="fas fa-times"></i>
+                            </a>
+                            {% else %}
+                            <span class="text-muted small">Sudah diproses</span>
+                            {% endif %}
+                        </td>
+                        {% endif %}
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="{% if is_admin %}9{% else %}8{% endif %}" class="text-center text-muted py-3">Belum ada pengajuan simpanan.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
         </div>
     </div>
 </div>
@@ -159,6 +239,44 @@
     </div>
 </div>
 
+<div class="card border-0 shadow-sm mt-4">
+    <div class="card-header bg-white">
+        <h5 class="mb-0"><i class="fas fa-notes-medical me-2 text-danger"></i>Catatan Iuran Sosial (Tidak Masuk Saldo)</h5>
+    </div>
+    <div class="card-body">
+        <div class="table-responsive">
+            <table class="table table-hover align-middle">
+                <thead class="table-light">
+                    <tr>
+                        <th>No</th>
+                        <th>Tanggal</th>
+                        <th>No Anggota</th>
+                        <th>Nama</th>
+                        <th>Nominal</th>
+                        <th>Catatan</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for t in catatan_iuran_sosial %}
+                    <tr>
+                        <td>{{ loop.index }}</td>
+                        <td class="small">{{ t.get('tanggal', '-') }}</td>
+                        <td><span class="badge bg-info">{{ t.get('no_anggota', '-') }}</span></td>
+                        <td>{{ t.get('nama_anggota', '-') }}</td>
+                        <td class="text-danger fw-bold">Rp {{ "{:,.0f}".format((t.get('jumlah', 0)|float)) }}</td>
+                        <td>{{ t.get('keterangan', '-') }}</td>
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="6" class="text-center text-muted py-3">Belum ada catatan iuran sosial.</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
 <script>
 // Tampilkan saldo saat memilih anggota
 const selectAnggota = document.getElementById('selectAnggota');
@@ -174,7 +292,10 @@ function tampilkanSaldoTerpilih() {
         if (saldoJenisTampil) saldoJenisTampil.textContent = '-';
         return;
     }
-    const jenis = selectJenisSimpanan ? (selectJenisSimpanan.value || 'Manasuka') : 'Manasuka';
+    const defaultJenis = selectJenisSimpanan && selectJenisSimpanan.options.length
+        ? selectJenisSimpanan.options[0].value
+        : '';
+    const jenis = selectJenisSimpanan ? (selectJenisSimpanan.value || defaultJenis) : defaultJenis;
     fetch(`/simpanan/saldo/${idAnggota}?jenis_simpanan=${encodeURIComponent(jenis)}`)
         .then(r => r.json())
         .then(data => {

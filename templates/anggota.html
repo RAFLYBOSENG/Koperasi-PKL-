@@ -36,6 +36,19 @@
                         <input type="text" name="no_telp" class="form-control" placeholder="08xxxxxxxxxx">
                     </div>
                     <div class="mb-3">
+                        <label class="form-label">No. Rekening</label>
+                        <input type="text" name="no_rekening" class="form-control" placeholder="Nomor rekening anggota">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Nama Bank</label>
+                        <input type="text" name="nama_bank" class="form-control" placeholder="Contoh: BRI, BCA, Mandiri">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Simpanan Pokok (validasi anggota baru)</label>
+                        <input type="text" name="simpanan_pokok" class="form-control" value="500000" readonly>
+                        <div class="form-text">Simpanan sekali untuk validasi anggota baru. Dicatat otomatis saat anggota disahkan.</div>
+                    </div>
+                    <div class="mb-3">
                         <label class="form-label">Penghasilan Bersih / Bulan (Rp)</label>
                         <input type="text" name="penghasilan_bersih" class="form-control" placeholder="Contoh: 5000000" required>
                     </div>
@@ -94,6 +107,9 @@
                                 <th>Nama</th>
                                 <th>Alamat</th>
                                 <th>No Telp</th>
+                                <th>No Rekening</th>
+                                <th>Nama Bank</th>
+                                <th>Simpanan Pokok</th>
                                 <th>Penghasilan/Bln</th>
                                 <th>Cicilan Lain/Bln</th>
                                 {% if is_admin %}
@@ -113,6 +129,9 @@
                                 <td class="fw-bold">{{ a['nama'] }}</td>
                                 <td>{{ a['alamat'] }}</td>
                                 <td>{{ a['no_telp'] }}</td>
+                                <td>{{ a.get('no_rekening', '-') or '-' }}</td>
+                                <td>{{ a.get('nama_bank', '-') or '-' }}</td>
+                                <td class="fw-bold text-primary">Rp {{ "{:,.0f}".format((a.get('simpanan_pokok',0)|float)) }}</td>
                                 <td class="text-success fw-bold">Rp {{ "{:,.0f}".format((a.get('penghasilan_bersih',0)|float)) }}</td>
                                 <td>Rp {{ "{:,.0f}".format((a.get('cicilan_lain',0)|float)) }}</td>
                                 {% if is_admin %}
