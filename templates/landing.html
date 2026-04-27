@@ -315,6 +315,7 @@
                 </div>
                 <div class="col-lg-6 mt-3 mt-lg-0">
                     <form method="POST" action="{{ url_for('pengajuan_anggota_baru') }}" class="row g-2">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <div class="col-md-6">
                             <input type="text" name="nama" class="form-control form-control-sm" placeholder="Nama lengkap" required>
                         </div>

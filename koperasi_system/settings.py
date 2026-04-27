@@ -4,6 +4,13 @@ BASE_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DATA_DIR = os.path.join(BASE_DIR, 'data')
 os.makedirs(DATA_DIR, exist_ok=True)
 
+DATABASE_URL = os.getenv('DATABASE_URL', '').strip()
+DB_POOL_SIZE = int(os.getenv('DB_POOL_SIZE', '5'))
+DB_MAX_OVERFLOW = int(os.getenv('DB_MAX_OVERFLOW', '10'))
+DB_POOL_TIMEOUT = int(os.getenv('DB_POOL_TIMEOUT', '30'))
+DB_ECHO = os.getenv('DB_ECHO', '0') == '1'
+DB_USE_SSL = os.getenv('DB_USE_SSL', '1') == '1'
+
 FILE_ANGGOTA = os.path.join(DATA_DIR, 'anggota.xlsx')
 FILE_SIMPANAN = os.path.join(DATA_DIR, 'simpanan.xlsx')
 FILE_SIMPANAN_TRANSAKSI = os.path.join(DATA_DIR, 'simpanan_transaksi.xlsx')

@@ -34,8 +34,9 @@
 
                 <div class="card border-0 shadow-sm">
                     <div class="card-body p-4">
-                        <form method="POST" action="{{ url_for('login') }}">
-                            <input type="hidden" name="next" value="{{ next or url_for('dashboard') }}">
+                        <form method="POST" action="{{ url_for('public_portal.login') }}">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="next" value="{{ next or '' }}">
                             <div class="mb-3">
                                 <label class="form-label">Username</label>
                                 <div class="input-group">
@@ -56,8 +57,8 @@
                         </form>
 
                         <div class="d-flex justify-content-between align-items-center mt-3 small">
-                            <a href="{{ url_for('lupa_password') }}">Lupa password?</a>
-                            <a href="{{ url_for('landing') }}" class="text-muted">← Beranda</a>
+                            <a href="{{ url_for('public_portal.lupa_password') }}">Lupa password?</a>
+                            <a href="{{ url_for('public_portal.landing') }}" class="text-muted">← Beranda</a>
                         </div>
                     </div>
                 </div>

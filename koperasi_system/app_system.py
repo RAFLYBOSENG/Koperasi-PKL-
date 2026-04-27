@@ -5,6 +5,7 @@ import re
 import json
 import uuid
 import smtplib
+import hmac
 from datetime import datetime, timedelta
 from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file, session, flash, abort
@@ -19,8 +20,12 @@ except ModuleNotFoundError:
     load_workbook = None
 from werkzeug.security import generate_password_hash, check_password_hash
 from werkzeug.utils import secure_filename
+from sqlalchemy import bindparam, text
+from sqlalchemy.exc import SQLAlchemyError
+from koperasi_system.db import db_session, ping_database
 from koperasi_system.settings import (
     BASE_DIR,
+    DATABASE_URL,
     FILE_ANGGOTA,
     FILE_SIMPANAN,
     FILE_SIMPANAN_TRANSAKSI,
@@ -61,6 +66,110 @@ app = Flask(
     static_folder=os.path.join(BASE_DIR, 'static'),
 )
 app.secret_key = os.getenv('KOPERASI_SECRET_KEY') or token_hex(32)
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True,
+    SESSION_COOKIE_SAMESITE='Lax',
+    SESSION_COOKIE_SECURE=os.getenv('SESSION_COOKIE_SECURE', '0') == '1',
+    PERMANENT_SESSION_LIFETIME=timedelta(minutes=int(os.getenv('USER_SESSION_TIMEOUT_MINUTES', '120'))),
+)
+
+LOGIN_MAX_ATTEMPTS = int(os.getenv('LOGIN_MAX_ATTEMPTS', '5'))
+LOGIN_LOCK_MINUTES = int(os.getenv('LOGIN_LOCK_MINUTES', '15'))
+ADMIN_SESSION_TIMEOUT_MINUTES = int(os.getenv('ADMIN_SESSION_TIMEOUT_MINUTES', '30'))
+USER_SESSION_TIMEOUT_MINUTES = int(os.getenv('USER_SESSION_TIMEOUT_MINUTES', '120'))
+MAX_BUKTI_TRANSFER_BYTES = int(os.getenv('MAX_BUKTI_TRANSFER_BYTES', str(2 * 1024 * 1024)))
+
+_FAILED_LOGIN_STATE = {}
+
+
+def _safe_next_url(raw_next: str, default_url: str) -> str:
+    candidate = (raw_next or '').strip()
+    if candidate.startswith('/') and not candidate.startswith('//'):
+        return candidate
+    return default_url
+
+
+def _role_home_url(role: str) -> str:
+    if role == 'admin':
+        return url_for('admin_portal.dashboard')
+    return url_for('public_portal.dashboard')
+
+
+def _get_or_create_csrf_token() -> str:
+    token = (session.get('_csrf_token') or '').strip()
+    if not token:
+        token = token_hex(32)
+        session['_csrf_token'] = token
+    return token
+
+
+def csrf_protect(view_func):
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        form_token = (request.form.get('csrf_token') or '').strip()
+        session_token = (session.get('_csrf_token') or '').strip()
+        if not form_token or not session_token or not hmac.compare_digest(form_token, session_token):
+            abort(400)
+        return view_func(*args, **kwargs)
+
+    return wrapper
+
+
+def csrf_protect_if_post(view_func):
+    @wraps(view_func)
+    def wrapper(*args, **kwargs):
+        if request.method == 'POST':
+            form_token = (request.form.get('csrf_token') or '').strip()
+            session_token = (session.get('_csrf_token') or '').strip()
+            if not form_token or not session_token or not hmac.compare_digest(form_token, session_token):
+                abort(400)
+        return view_func(*args, **kwargs)
+
+    return wrapper
+
+
+def _login_state_key(username: str) -> str:
+    ip_addr = (request.remote_addr or '-').strip()
+    return f"{username.lower()}|{ip_addr}"
+
+
+def _remaining_login_lock_seconds(username: str) -> int:
+    state = _FAILED_LOGIN_STATE.get(_login_state_key(username))
+    if not state:
+        return 0
+    locked_until = state.get('locked_until')
+    if not locked_until:
+        return 0
+    now = datetime.utcnow()
+    if now >= locked_until:
+        _FAILED_LOGIN_STATE.pop(_login_state_key(username), None)
+        return 0
+    return int((locked_until - now).total_seconds())
+
+
+def _register_failed_login(username: str):
+    key = _login_state_key(username)
+    state = _FAILED_LOGIN_STATE.get(key) or {'count': 0, 'locked_until': None}
+    state['count'] = int(state.get('count') or 0) + 1
+    if state['count'] >= LOGIN_MAX_ATTEMPTS:
+        state['locked_until'] = datetime.utcnow() + timedelta(minutes=LOGIN_LOCK_MINUTES)
+        state['count'] = 0
+    _FAILED_LOGIN_STATE[key] = state
+
+
+def _clear_failed_login(username: str):
+    _FAILED_LOGIN_STATE.pop(_login_state_key(username), None)
+
+
+def _is_supported_image_signature(ext: str, header: bytes) -> bool:
+    ext = (ext or '').lower()
+    if ext == '.png':
+        return header.startswith(b'\x89PNG\r\n\x1a\n')
+    if ext in ('.jpg', '.jpeg'):
+        return header.startswith(b'\xff\xd8\xff')
+    if ext == '.webp':
+        return len(header) >= 12 and header[:4] == b'RIFF' and header[8:12] == b'WEBP'
+    return False
 
 UPLOAD_BUKTI_DIR = os.path.join(app.static_folder, 'uploads', 'bukti_transfer')
 ALLOWED_BUKTI_EXT = {'.png', '.jpg', '.jpeg', '.webp'}
@@ -72,6 +181,139 @@ PAYMENT_STATUS_SUCCESS = 'Berhasil'
 PAYMENT_STATUS_FAILED = 'Gagal'
 PAYMENT_STATUS_EXPIRED = 'Expired'
 
+DB_BACKED_FILES = {
+    FILE_ANGGOTA: {
+        'table': 'anggota',
+        'columns': ANGGOTA_FIELDNAMES,
+        'pk': 'id_anggota',
+    },
+    FILE_USERS: {
+        'table': 'users',
+        'columns': ['id_user', 'username', 'password_hash', 'role', 'id_anggota', 'created_at'],
+        'pk': 'id_user',
+    },
+    FILE_SIMPANAN: {
+        'table': 'simpanan',
+        'columns': SIMPANAN_FIELDNAMES,
+        'pk': 'id_anggota',
+    },
+    FILE_SIMPANAN_TRANSAKSI: {
+        'table': 'simpanan_transaksi',
+        'columns': SIMPANAN_TRANSAKSI_FIELDNAMES,
+        'pk': 'id_transaksi',
+    },
+    FILE_SIMPANAN_PENGAJUAN: {
+        'table': 'simpanan_pengajuan',
+        'columns': SIMPANAN_PENGAJUAN_FIELDNAMES,
+        'pk': 'id_pengajuan',
+    },
+    FILE_IURAN_SOSIAL: {
+        'table': 'iuran_sosial',
+        'columns': IURAN_SOSIAL_FIELDNAMES,
+        'pk': 'id_iuran',
+    },
+    FILE_PINJAMAN: {
+        'table': 'pinjaman',
+        'columns': PINJAMAN_FIELDNAMES,
+        'pk': 'id_pinjaman',
+    },
+    FILE_PINJAMAN_CICILAN: {
+        'table': 'pinjaman_cicilan',
+        'columns': CICILAN_FIELDNAMES,
+        'pk': 'id_cicilan',
+    },
+    FILE_PENDAFTARAN_ANGGOTA: {
+        'table': 'pendaftaran_anggota',
+        'columns': PENDAFTARAN_FIELDNAMES,
+        'pk': 'id_pengajuan',
+    },
+}
+_DB_READY_CACHE = None
+
+
+def _is_db_mode_enabled() -> bool:
+    global _DB_READY_CACHE
+    if not DATABASE_URL:
+        return False
+    if _DB_READY_CACHE is None:
+        try:
+            _DB_READY_CACHE = bool(ping_database())
+        except Exception:
+            _DB_READY_CACHE = False
+    return bool(_DB_READY_CACHE)
+
+
+def _db_select_rows_for_file(filepath: str):
+    cfg = DB_BACKED_FILES.get(filepath)
+    if not cfg:
+        return []
+    table = cfg['table']
+    columns = cfg['columns']
+    query = text(f"SELECT {', '.join(columns)} FROM {table}")
+    try:
+        with db_session() as conn:
+            rows = conn.execute(query).mappings().all()
+        out = []
+        for row in rows:
+            out.append({col: '' if row.get(col) is None else str(row.get(col)).strip() for col in columns})
+        return out
+    except SQLAlchemyError as e:
+        print(f"Error membaca DB table {table}: {e}")
+        return []
+
+
+def _db_write_rows_for_file(filepath: str, data, fieldnames):
+    cfg = DB_BACKED_FILES.get(filepath)
+    if not cfg:
+        return False
+    if cfg.get('read_only'):
+        return False
+    table = cfg['table']
+    pk = cfg.get('pk')
+    columns = [c for c in cfg['columns'] if c in fieldnames]
+    if not columns:
+        return True
+    placeholders = ', '.join(f":{c}" for c in columns)
+    insert_sql = f"INSERT INTO {table} ({', '.join(columns)}) VALUES ({placeholders})"
+    update_columns = [c for c in columns if c != pk]
+    if pk and pk in columns:
+        if update_columns:
+            set_clause = ', '.join(f"{c}=EXCLUDED.{c}" for c in update_columns)
+            insert_sql += f" ON CONFLICT ({pk}) DO UPDATE SET {set_clause}"
+        else:
+            insert_sql += f" ON CONFLICT ({pk}) DO NOTHING"
+    insert_stmt = text(insert_sql)
+    try:
+        with db_session() as conn:
+            seen_pk_values = []
+            for row_dict in data:
+                payload = {}
+                for c in columns:
+                    value = row_dict.get(c, '')
+                    if isinstance(value, str):
+                        value = value.strip()
+                    if c == 'id_anggota' and value == '':
+                        value = None
+                    if value == '':
+                        value = None
+                    payload[c] = value
+                if pk and pk in payload and payload.get(pk) is None:
+                    continue
+                if pk and pk in payload:
+                    seen_pk_values.append(payload[pk])
+                conn.execute(insert_stmt, payload)
+
+            if pk and pk in columns:
+                if seen_pk_values:
+                    delete_stmt = text(f"DELETE FROM {table} WHERE {pk} NOT IN :ids").bindparams(bindparam('ids', expanding=True))
+                    conn.execute(delete_stmt, {'ids': seen_pk_values})
+                else:
+                    conn.execute(text(f"DELETE FROM {table}"))
+        return True
+    except SQLAlchemyError as e:
+        print(f"Error menulis DB table {table}: {e}")
+        return False
+
 def _save_bukti_transfer(file_storage, id_pinjaman: str) -> str:
     """Simpan file bukti transfer (return path relatif dari /static) atau '' jika gagal."""
     if not file_storage or not getattr(file_storage, 'filename', ''):
@@ -79,6 +321,18 @@ def _save_bukti_transfer(file_storage, id_pinjaman: str) -> str:
     filename = secure_filename(file_storage.filename or '')
     _, ext = os.path.splitext(filename.lower())
     if ext not in ALLOWED_BUKTI_EXT:
+        return ''
+    try:
+        file_storage.stream.seek(0, os.SEEK_END)
+        file_size = file_storage.stream.tell()
+        file_storage.stream.seek(0)
+    except Exception:
+        file_size = 0
+    if file_size <= 0 or file_size > MAX_BUKTI_TRANSFER_BYTES:
+        return ''
+    header = file_storage.stream.read(16)
+    file_storage.stream.seek(0)
+    if not _is_supported_image_signature(ext, header):
         return ''
     os.makedirs(UPLOAD_BUKTI_DIR, exist_ok=True)
     stamp = datetime.now().strftime('%Y%m%d%H%M%S')
@@ -173,6 +427,9 @@ def _build_qris_payload_dana(no_dana: str, amount: float, id_pinjaman: str) -> s
 # ──────────────────────────────────────────────
 def baca_csv(filepath):
     """Baca file Excel (.xlsx) atau CSV (.csv) dan kembalikan list of dict."""
+    if _is_db_mode_enabled() and filepath in DB_BACKED_FILES:
+        return _db_select_rows_for_file(filepath)
+
     if not os.path.exists(filepath):
         return []
     
@@ -218,6 +475,10 @@ def baca_csv(filepath):
 
 def tulis_csv(filepath, data, fieldnames):
     """Tulis list of dict ke file Excel (.xlsx)."""
+    if _is_db_mode_enabled() and filepath in DB_BACKED_FILES:
+        if _db_write_rows_for_file(filepath, data, fieldnames):
+            return
+
     try:
         # Create new workbook
         wb = Workbook()
@@ -304,8 +565,10 @@ def migrate_csv_to_excel():
 
 def init_csv():
     """Inisialisasi file Excel jika belum ada."""
+    db_mode = _is_db_mode_enabled()
     if not os.path.exists(FILE_ANGGOTA):
-        tulis_csv(FILE_ANGGOTA, [], ANGGOTA_FIELDNAMES)
+        if not db_mode:
+            tulis_csv(FILE_ANGGOTA, [], ANGGOTA_FIELDNAMES)
     if not os.path.exists(FILE_SIMPANAN):
         tulis_csv(FILE_SIMPANAN, [], SIMPANAN_FIELDNAMES)
     if not os.path.exists(FILE_SIMPANAN_TRANSAKSI):
@@ -316,27 +579,31 @@ def init_csv():
         tulis_csv(FILE_PINJAMAN, [], PINJAMAN_FIELDNAMES)
     if not os.path.exists(FILE_PINJAMAN_CICILAN):
         tulis_csv(FILE_PINJAMAN_CICILAN, [], CICILAN_FIELDNAMES)
-    if not os.path.exists(FILE_USERS):
-        default_users = [
-            {
-                'id_user': str(uuid.uuid4()),
-                'username': 'admin',
-                'password_hash': generate_password_hash('Admin@123'),
-                'role': 'admin',
-                'id_anggota': '',
-                'created_at': datetime.now().strftime('%Y-%m-%d')
-            },
-            {
-                'id_user': str(uuid.uuid4()),
-                'username': 'user',
-                'password_hash': generate_password_hash('User@1234'),
-                'role': 'user',
-                'id_anggota': '',
-                'created_at': datetime.now().strftime('%Y-%m-%d')
-            }
-        ]
+    default_users = [
+        {
+            'id_user': str(uuid.uuid4()),
+            'username': 'admin',
+            'password_hash': generate_password_hash('Admin@123'),
+            'role': 'admin',
+            'id_anggota': '',
+            'created_at': datetime.now().strftime('%Y-%m-%d')
+        },
+        {
+            'id_user': str(uuid.uuid4()),
+            'username': 'user',
+            'password_hash': generate_password_hash('User@1234'),
+            'role': 'user',
+            'id_anggota': '',
+            'created_at': datetime.now().strftime('%Y-%m-%d')
+        }
+    ]
+    if db_mode:
+        if not baca_csv(FILE_USERS):
+            tulis_csv(FILE_USERS, default_users, ['id_user', 'username', 'password_hash', 'role', 'id_anggota', 'created_at'])
+    elif not os.path.exists(FILE_USERS):
         tulis_csv(FILE_USERS, default_users, ['id_user', 'username', 'password_hash', 'role', 'id_anggota', 'created_at'])
-    if not os.path.exists(FILE_PENDAFTARAN_ANGGOTA):
+    # Mode DB: pendaftaran_anggota dikelola di PostgreSQL, tidak perlu file Excel harian.
+    if (not db_mode) and (not os.path.exists(FILE_PENDAFTARAN_ANGGOTA)):
         tulis_csv(FILE_PENDAFTARAN_ANGGOTA, [], PENDAFTARAN_FIELDNAMES)
 
 
@@ -348,11 +615,13 @@ def kategori_pinjaman_dari_tenor(tenor_bulan: int) -> str:
     return 'Jangka Pendek'
 
 
-# Migrasi CSV lama ke Excel
-migrate_csv_to_excel()
-
-# Inisialisasi file Excel
-init_csv()
+# Mode file (legacy): lakukan migrasi CSV->Excel dan bootstrap file.
+# Mode DB: operasi harian tidak bergantung Excel, jadi jangan jalankan otomatis.
+if not _is_db_mode_enabled():
+    # Migrasi CSV lama ke Excel
+    migrate_csv_to_excel()
+    # Inisialisasi file Excel
+    init_csv()
 
 
 def migrate_simpanan_ke_saldo():
@@ -907,6 +1176,9 @@ def ensure_pinjaman_cicilan_schema():
 
 
 def ensure_import_log_schema():
+    # Mode DB: schema dikelola via SQL migrasi (db/schema.sql), tidak membuat file Excel.
+    if _is_db_mode_enabled():
+        return
     if not os.path.exists(FILE_IMPORT_LOG):
         tulis_csv(
             FILE_IMPORT_LOG,
@@ -957,6 +1229,9 @@ def migrate_sisa_pinjaman_aktif_ke_total():
 
 def ensure_pendaftaran_schema():
     """Migrasi kolom pengajuan anggota (penghasilan, cicilan, id anggota dibuat, dll.)."""
+    # Mode DB: schema dikelola via SQL migrasi (db/schema.sql), tidak mengubah file Excel.
+    if _is_db_mode_enabled():
+        return
     if not os.path.exists(FILE_PENDAFTARAN_ANGGOTA):
         return
     rows = baca_csv(FILE_PENDAFTARAN_ANGGOTA)
@@ -1348,6 +1623,57 @@ migrate_simpanan_transaksi_legacy_labels()
 migrate_iuran_sosial_legacy()
 
 
+def _db_insert_import_log(berhasil: int, gagal: int, mode: str, nama_file: str, catatan: str) -> None:
+    """Append 1 baris import_log ke PostgreSQL (tanpa bergantung file Excel)."""
+    stmt = text(
+        """
+        INSERT INTO import_log (waktu, "user", mode, nama_file, berhasil, gagal, catatan)
+        VALUES (:waktu, :user, :mode, :nama_file, :berhasil, :gagal, :catatan)
+        """
+    )
+    payload = {
+        "waktu": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+        "user": (session.get("user") or ""),
+        "mode": (mode or "").strip(),
+        "nama_file": (nama_file or "").strip(),
+        "berhasil": int(berhasil or 0),
+        "gagal": int(gagal or 0),
+        "catatan": (catatan or "")[:2000],
+    }
+    with db_session() as conn:
+        conn.execute(stmt, payload)
+
+
+def _db_select_import_log_latest(limit: int = 50) -> list:
+    """Ambil import_log terbaru (DB mode)."""
+    stmt = text(
+        """
+        SELECT waktu, "user", mode, nama_file, berhasil, gagal, catatan
+        FROM import_log
+        ORDER BY waktu DESC
+        LIMIT :limit
+        """
+    )
+    try:
+        with db_session() as conn:
+            rows = conn.execute(stmt, {"limit": int(limit or 50)}).mappings().all()
+        out = []
+        for r in rows:
+            out.append({
+                "waktu": "" if r.get("waktu") is None else str(r.get("waktu")),
+                "user": "" if r.get("user") is None else str(r.get("user")),
+                "mode": "" if r.get("mode") is None else str(r.get("mode")),
+                "nama_file": "" if r.get("nama_file") is None else str(r.get("nama_file")),
+                "berhasil": "0" if r.get("berhasil") is None else str(r.get("berhasil")),
+                "gagal": "0" if r.get("gagal") is None else str(r.get("gagal")),
+                "catatan": "" if r.get("catatan") is None else str(r.get("catatan")),
+            })
+        return out
+    except SQLAlchemyError as e:
+        print(f"Error membaca import_log dari DB: {e}")
+        return []
+
+
 def hitung_kapasitas_cicilan(penghasilan_bersih: float, cicilan_lain: float, dsr: float) -> float:
     return max((penghasilan_bersih * dsr) - cicilan_lain, 0.0)
 
@@ -1673,6 +1999,30 @@ def restrict_id_anggota_or_forbid(id_anggota: str):
         abort(403)
 
 
+@app.before_request
+def enforce_session_timeout():
+    if not session.get('user'):
+        return None
+
+    endpoint = request.endpoint or ''
+    if endpoint.startswith('static'):
+        return None
+
+    now_ts = datetime.utcnow().timestamp()
+    last_ts = float(session.get('_last_activity_ts') or 0)
+    role = (session.get('role') or 'user').strip()
+    timeout_minutes = ADMIN_SESSION_TIMEOUT_MINUTES if role == 'admin' else USER_SESSION_TIMEOUT_MINUTES
+
+    if last_ts and (now_ts - last_ts) > (timeout_minutes * 60):
+        session.clear()
+        flash('Sesi berakhir karena tidak ada aktivitas. Silakan login ulang.', 'warning')
+        return redirect(url_for('login', next=request.path))
+
+    session['_last_activity_ts'] = now_ts
+    session.permanent = True
+    return None
+
+
 @app.after_request
 def add_no_cache_headers(response):
     response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0, private'
@@ -1692,7 +2042,8 @@ def inject_globals():
         'current_user': session.get('user'),
         'current_role': session.get('role'),
         'is_admin': is_current_user_admin(),
-        'current_id_anggota': get_current_user_id_anggota()
+        'current_id_anggota': get_current_user_id_anggota(),
+        'csrf_token': _get_or_create_csrf_token(),
     }
 
 
@@ -1727,6 +2078,7 @@ def landing():
 
 
 @app.route('/pendaftaran-anggota', methods=['POST'])
+@csrf_protect
 def pengajuan_anggota_baru():
     """Pengajuan anggota baru dari landing page."""
     ensure_pendaftaran_schema()
@@ -1774,35 +2126,54 @@ def robots_txt():
 
 
 @app.route('/login', methods=['GET', 'POST'])
+@csrf_protect_if_post
 def login():
     ensure_users_schema()
     if request.method == 'POST':
         username = request.form.get('username', '').strip()
         password = request.form.get('password', '')
-        next_url = request.form.get('next') or url_for('dashboard')
+        next_url = request.form.get('next') or ''
+
+        remaining_lock = _remaining_login_lock_seconds(username)
+        if remaining_lock > 0:
+            wait_min = max((remaining_lock + 59) // 60, 1)
+            flash(f'Terlalu banyak percobaan login. Coba lagi dalam {wait_min} menit.', 'danger')
+            return render_template('login.html', next=next_url), 429
 
         user = get_user_by_username(username)
         if not user or not check_password_hash(user.get('password_hash', ''), password):
+            _register_failed_login(username)
             flash('Username atau password salah.', 'danger')
             return render_template('login.html', next=next_url), 401
+
+        _clear_failed_login(username)
+        session.clear()
 
         session['user'] = user.get('username')
         session['role'] = user.get('role')
         session['id_user'] = user.get('id_user')
         session['id_anggota'] = user.get('id_anggota', '')
+        session['_csrf_token'] = token_hex(32)
+        session['_last_activity_ts'] = datetime.utcnow().timestamp()
+        session.permanent = True
         if session.get('role') == 'user' and not session.get('id_anggota'):
             session.clear()
             flash('Akun ini belum dihubungkan ke anggota. Hubungi admin.', 'danger')
             return render_template('login.html', next=next_url), 403
         flash(f"Selamat datang, {session['user']}!", 'success')
-        return redirect(next_url)
+        role_home = _role_home_url(session.get('role') or 'user')
+        safe_next = _safe_next_url(next_url, role_home)
+        if not next_url or safe_next == url_for('dashboard'):
+            safe_next = role_home
+        return redirect(safe_next)
 
     if session.get('user'):
-        return redirect(url_for('dashboard'))
-    return render_template('login.html', next=request.args.get('next', url_for('dashboard')))
+        return redirect(_role_home_url(session.get('role') or 'user'))
+    return render_template('login.html', next=request.args.get('next', ''))
 
 
 @app.route('/lupa-password', methods=['GET', 'POST'])
+@csrf_protect_if_post
 def lupa_password():
     """Reset password mandiri untuk akun user (verifikasi nomor anggota yang terhubung)."""
     ensure_users_schema()
@@ -1868,6 +2239,7 @@ def users_index():
 
 @app.route('/users/tambah', methods=['POST'])
 @admin_required
+@csrf_protect
 def users_tambah():
     ensure_users_schema()
     username = (request.form.get('username') or '').strip()
@@ -1915,6 +2287,7 @@ def users_tambah():
 
 @app.route('/users/reset_password/<id_user>', methods=['POST'])
 @admin_required
+@csrf_protect
 def users_reset_password(id_user):
     ensure_users_schema()
     new_password = request.form.get('new_password') or ''
@@ -1942,8 +2315,9 @@ def users_reset_password(id_user):
     return redirect(url_for('users_index'))
 
 
-@app.route('/users/hapus/<id_user>')
+@app.route('/users/hapus/<id_user>', methods=['POST'])
 @admin_required
+@csrf_protect
 def users_hapus(id_user):
     ensure_users_schema()
     current_id = session.get('id_user')
@@ -2143,8 +2517,9 @@ def dashboard():
                            jumlah_pengajuan_menunggu=jumlah_pengajuan_menunggu)
 
 
-@app.route('/pengajuan-anggota/konfirmasi/<id_pengajuan>')
+@app.route('/pengajuan-anggota/konfirmasi/<id_pengajuan>', methods=['POST'])
 @admin_required
+@csrf_protect
 def konfirmasi_pengajuan_anggota(id_pengajuan):
     ensure_pendaftaran_schema()
     pengajuan = baca_csv(FILE_PENDAFTARAN_ANGGOTA)
@@ -2207,8 +2582,9 @@ def konfirmasi_pengajuan_anggota(id_pengajuan):
     return redirect(url_for('dashboard'))
 
 
-@app.route('/pengajuan-anggota/tolak/<id_pengajuan>')
+@app.route('/pengajuan-anggota/tolak/<id_pengajuan>', methods=['POST'])
 @admin_required
+@csrf_protect
 def tolak_pengajuan_anggota(id_pengajuan):
     ensure_pendaftaran_schema()
     pengajuan = baca_csv(FILE_PENDAFTARAN_ANGGOTA)
@@ -2248,6 +2624,7 @@ def halaman_anggota():
 
 @app.route('/anggota/tambah', methods=['POST'])
 @admin_required
+@csrf_protect
 def tambah_anggota():
     ensure_anggota_schema()
     data = baca_csv(FILE_ANGGOTA)
@@ -2329,8 +2706,9 @@ def tambah_anggota():
     return redirect('/anggota')
 
 
-@app.route('/anggota/hapus/<id_anggota>')
+@app.route('/anggota/hapus/<id_anggota>', methods=['POST'])
 @admin_required
+@csrf_protect
 def hapus_anggota(id_anggota):
     data = baca_csv(FILE_ANGGOTA)
     data = [a for a in data if a['id_anggota'] != id_anggota]
@@ -2340,6 +2718,7 @@ def hapus_anggota(id_anggota):
 
 @app.route('/anggota/edit/<id_anggota>', methods=['GET', 'POST'])
 @admin_required
+@csrf_protect_if_post
 def edit_anggota(id_anggota):
     ensure_anggota_schema()
     data = baca_csv(FILE_ANGGOTA)
@@ -2370,6 +2749,7 @@ def edit_anggota(id_anggota):
 
 @app.route('/anggota/import-excel', methods=['POST'])
 @admin_required
+@csrf_protect
 def import_anggota_excel():
     """Import anggota dari Excel dengan smart upsert berdasarkan NIK, fallback No Anggota."""
     ensure_anggota_schema()
@@ -2650,6 +3030,15 @@ def parse_anggota_csv_upload(file_storage):
 
 
 def _append_import_log(berhasil: int, gagal: int, mode: str, nama_file: str, catatan: str):
+    # Mode DB: append langsung ke tabel import_log.
+    if _is_db_mode_enabled():
+        try:
+            _db_insert_import_log(berhasil=berhasil, gagal=gagal, mode=mode, nama_file=nama_file, catatan=catatan)
+            return
+        except SQLAlchemyError as e:
+            # fallback ke file jika DB bermasalah
+            print(f"Error menulis import_log ke DB, fallback ke Excel: {e}")
+
     ensure_import_log_schema()
     rows = baca_csv(FILE_IMPORT_LOG)
     rows.append({
@@ -2661,11 +3050,7 @@ def _append_import_log(berhasil: int, gagal: int, mode: str, nama_file: str, cat
         'gagal': str(gagal),
         'catatan': catatan[:2000],
     })
-    tulis_csv(
-        FILE_IMPORT_LOG,
-        rows,
-        ['waktu', 'user', 'mode', 'nama_file', 'berhasil', 'gagal', 'catatan'],
-    )
+    tulis_csv(FILE_IMPORT_LOG, rows, ['waktu', 'user', 'mode', 'nama_file', 'berhasil', 'gagal', 'catatan'])
 
 
 def jalankan_import_csv_ringkasan(preview_rows: list, mode: str) -> tuple:
@@ -2832,6 +3217,7 @@ def kategori_pinjaman_dari_tenor(tenor_bulan: int) -> str:
 
 @app.route('/import_csv', methods=['POST'])
 @admin_required
+@csrf_protect
 def import_csv_unified():
     """Unggah satu file (CSV/Excel): merge anggota, akumulasi simpanan & pinjaman (tenor max)."""
     redir = request.referrer or url_for('halaman_anggota')
@@ -3016,9 +3402,13 @@ def import_csv_unified():
 @app.route('/anggota/import-csv', methods=['GET'])
 @admin_required
 def halaman_import_csv_anggota():
-    ensure_import_log_schema()
-    logs = baca_csv(FILE_IMPORT_LOG)
-    logs = sorted(logs, key=lambda x: x.get('waktu', ''), reverse=True)[:50]
+    # Mode DB: ambil langsung 50 terbaru dari PostgreSQL (lebih efisien).
+    if _is_db_mode_enabled():
+        logs = _db_select_import_log_latest(limit=50)
+    else:
+        ensure_import_log_schema()
+        logs = baca_csv(FILE_IMPORT_LOG)
+        logs = sorted(logs, key=lambda x: x.get('waktu', ''), reverse=True)[:50]
     return render_template('import_csv_anggota.html', import_log=logs)
 
 
@@ -3077,6 +3467,7 @@ def download_sample_csv_anggota():
 
 @app.route('/anggota/import-csv/preview', methods=['POST'])
 @admin_required
+@csrf_protect
 def preview_import_csv_anggota():
     try:
         if 'file_csv' not in request.files:
@@ -3128,6 +3519,7 @@ def tampil_preview_import_csv():
 
 @app.route('/anggota/import-csv/execute', methods=['POST'])
 @admin_required
+@csrf_protect
 def execute_import_csv_anggota():
     token = (request.form.get('token') or '').strip()
     mode = (request.form.get('mode') or 'append').strip().lower()
@@ -3326,6 +3718,9 @@ def cari_nama():
     """Autocomplete nama anggota berdasarkan No Anggota."""
     no_anggota = request.args.get('no_anggota', '')
     data = baca_csv(FILE_ANGGOTA)
+    if not is_current_user_admin():
+        id_anggota = get_current_user_id_anggota()
+        data = [a for a in data if a.get('id_anggota') == id_anggota]
     for a in data:
         if a['no_anggota'] == no_anggota:
             return jsonify({'nama': a['nama'], 'id_anggota': a['id_anggota']})
@@ -3338,6 +3733,9 @@ def cari_anggota_autocomplete():
     """Cari anggota berdasarkan nama (autocomplete)."""
     query = request.args.get('q', '').lower()
     data = baca_csv(FILE_ANGGOTA)
+    if not is_current_user_admin():
+        id_anggota = get_current_user_id_anggota()
+        data = [a for a in data if a.get('id_anggota') == id_anggota]
     hasil = [a for a in data if query in a['nama'].lower()]
     return jsonify(hasil)
 
@@ -3423,6 +3821,7 @@ def halaman_simpanan():
 
 @app.route('/simpanan/tambah', methods=['POST'])
 @login_required
+@csrf_protect
 def tambah_simpanan():
     ensure_simpanan_schema()
     ensure_simpanan_transaksi_schema()
@@ -3537,8 +3936,9 @@ def tambah_simpanan():
     return redirect('/simpanan')
 
 
-@app.route('/simpanan/konfirmasi/<id_simpanan>')
+@app.route('/simpanan/konfirmasi/<id_simpanan>', methods=['POST'])
 @admin_required
+@csrf_protect
 def konfirmasi_simpanan(id_simpanan):
     ensure_simpanan_schema()
     ensure_simpanan_transaksi_schema()
@@ -3594,8 +3994,9 @@ def konfirmasi_simpanan(id_simpanan):
     return redirect('/simpanan')
 
 
-@app.route('/simpanan/tolak/<id_simpanan>')
+@app.route('/simpanan/tolak/<id_simpanan>', methods=['POST'])
 @admin_required
+@csrf_protect
 def tolak_simpanan(id_simpanan):
     ensure_simpanan_pengajuan_schema()
     pengajuan_simpanan = baca_csv(FILE_SIMPANAN_PENGAJUAN)
@@ -3622,8 +4023,9 @@ def tolak_simpanan(id_simpanan):
     return redirect('/simpanan')
 
 
-@app.route('/simpanan/hapus/<id_anggota>')
+@app.route('/simpanan/hapus/<id_anggota>', methods=['POST'])
 @admin_required
+@csrf_protect
 def hapus_simpanan(id_anggota):
     data = [s for s in baca_csv(FILE_SIMPANAN) if s.get('id_anggota') != id_anggota]
     tulis_csv(FILE_SIMPANAN, data, SIMPANAN_FIELDNAMES)
@@ -3782,6 +4184,12 @@ def hitung_pinjaman():
         plafon_maks = None
         dsr = None
         dsr_persen = None
+        if id_anggota and not session.get('user'):
+            id_anggota = ''
+        if id_anggota and not is_current_user_admin():
+            current_id_anggota = get_current_user_id_anggota()
+            if not current_id_anggota or id_anggota != current_id_anggota:
+                abort(403)
         if id_anggota:
             ensure_anggota_schema()
             anggota = get_anggota_by_id(id_anggota)
@@ -3833,6 +4241,7 @@ def cek_tunggakan(id_anggota):
 
 @app.route('/pinjaman/tambah', methods=['POST'])
 @login_required
+@csrf_protect
 def tambah_pinjaman():
     pinjaman = baca_csv(FILE_PINJAMAN)
     if is_current_user_admin():
@@ -3940,8 +4349,9 @@ def tambah_pinjaman():
     return redirect('/pinjaman')
 
 
-@app.route('/pinjaman/konfirmasi/<id_pinjaman>')
+@app.route('/pinjaman/konfirmasi/<id_pinjaman>', methods=['POST'])
 @admin_required
+@csrf_protect
 def konfirmasi_pinjaman(id_pinjaman):
     pinjaman = baca_csv(FILE_PINJAMAN)
     found = False
@@ -4007,8 +4417,9 @@ def konfirmasi_pinjaman(id_pinjaman):
     return redirect('/pinjaman')
 
 
-@app.route('/pinjaman/tolak/<id_pinjaman>')
+@app.route('/pinjaman/tolak/<id_pinjaman>', methods=['POST'])
 @admin_required
+@csrf_protect
 def tolak_pinjaman(id_pinjaman):
     pinjaman = baca_csv(FILE_PINJAMAN)
     found = False
@@ -4080,6 +4491,7 @@ def _jumlah_cicilan_terhitung(cicilan_rows: list, id_pinjaman: str) -> int:
 
 @app.route('/pinjaman/angsur/<id_pinjaman>', methods=['POST'])
 @admin_required
+@csrf_protect
 def angsur_pinjaman(id_pinjaman):
     """Bayar cicilan langsung oleh admin; mencatat metode Admin di riwayat cicilan."""
     ensure_pinjaman_cicilan_schema()
@@ -4119,6 +4531,7 @@ def angsur_pinjaman(id_pinjaman):
 
 @app.route('/pinjaman/cicilan/gagal-bayar/<id_pinjaman>', methods=['POST'])
 @admin_required
+@csrf_protect
 def gagal_bayar_pinjaman(id_pinjaman):
     """Catat cicilan gagal bayar dan akumulasikan ke sisa pinjaman."""
     ensure_pinjaman_cicilan_schema()
@@ -4207,6 +4620,7 @@ def gagal_bayar_pinjaman(id_pinjaman):
 
 @app.route('/pinjaman/ajukan-cicilan/<id_pinjaman>', methods=['POST'])
 @login_required
+@csrf_protect
 def ajukan_cicilan(id_pinjaman):
     """Pengajuan bayar cicilan oleh user; perlu dikonfirmasi admin sebelum mengurangi sisa pinjaman."""
     ensure_pinjaman_cicilan_schema()
@@ -4310,8 +4724,9 @@ def ajukan_cicilan(id_pinjaman):
     return redirect('/pinjaman')
 
 
-@app.route('/pinjaman/cicilan/konfirmasi/<id_cicilan>')
+@app.route('/pinjaman/cicilan/konfirmasi/<id_cicilan>', methods=['POST'])
 @admin_required
+@csrf_protect
 def konfirmasi_cicilan(id_cicilan):
     """Admin menyetujui pengajuan cicilan dan langsung mengurangi sisa pinjaman."""
     cicilan = baca_csv(FILE_PINJAMAN_CICILAN)
@@ -4406,8 +4821,9 @@ def cicilan_menunggu_json():
     return jsonify({'count': len(items), 'items': items})
 
 
-@app.route('/pinjaman/cicilan/tolak/<id_cicilan>')
+@app.route('/pinjaman/cicilan/tolak/<id_cicilan>', methods=['POST'])
 @admin_required
+@csrf_protect
 def tolak_cicilan(id_cicilan):
     """Admin menolak pengajuan cicilan (tanpa mengubah sisa pinjaman)."""
     cicilan = baca_csv(FILE_PINJAMAN_CICILAN)
@@ -4438,8 +4854,9 @@ def tolak_cicilan(id_cicilan):
     return redirect('/pinjaman')
 
 
-@app.route('/pinjaman/hapus/<id_pinjaman>')
+@app.route('/pinjaman/hapus/<id_pinjaman>', methods=['POST'])
 @admin_required
+@csrf_protect
 def hapus_pinjaman(id_pinjaman):
     data = [p for p in baca_csv(FILE_PINJAMAN) if p.get('id_pinjaman') != id_pinjaman]
     tulis_csv(FILE_PINJAMAN, data, PINJAMAN_FIELDNAMES)
@@ -4858,6 +5275,10 @@ def laporan_anggota(id_anggota):
 # ══════════════════════════════════════════════
 #  JALANKAN APLIKASI
 # ══════════════════════════════════════════════
+from koperasi_system.route_aliases import register_route_aliases
+
+register_route_aliases(app)
+
 if __name__ == '__main__':
     print("=" * 50)
     print("  APLIKASI KOPERASI BERBASIS WEB")

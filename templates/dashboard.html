@@ -395,14 +395,20 @@
                         </td>
                         <td>
                             {% if p['status'] == 'Menunggu' %}
-                            <a href="{{ url_for('konfirmasi_pengajuan_anggota', id_pengajuan=p['id_pengajuan']) }}"
-                               class="btn btn-sm btn-success" onclick="return confirm('Setujui pengajuan ini?')">
-                                <i class="fas fa-check"></i>
-                            </a>
-                            <a href="{{ url_for('tolak_pengajuan_anggota', id_pengajuan=p['id_pengajuan']) }}"
-                               class="btn btn-sm btn-danger" onclick="return confirm('Tolak pengajuan ini?')">
-                                <i class="fas fa-xmark"></i>
-                            </a>
+                            <form action="{{ url_for('konfirmasi_pengajuan_anggota', id_pengajuan=p['id_pengajuan']) }}" method="POST" class="d-inline"
+                                  onsubmit="return confirm('Setujui pengajuan ini?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="btn btn-sm btn-success">
+                                    <i class="fas fa-check"></i>
+                                </button>
+                            </form>
+                            <form action="{{ url_for('tolak_pengajuan_anggota', id_pengajuan=p['id_pengajuan']) }}" method="POST" class="d-inline"
+                                  onsubmit="return confirm('Tolak pengajuan ini?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="btn btn-sm btn-danger">
+                                    <i class="fas fa-xmark"></i>
+                                </button>
+                            </form>
                             {% else %}
                             <span class="text-muted small">Selesai</span>
                             {% endif %}

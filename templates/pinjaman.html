@@ -10,6 +10,7 @@
             </div>
             <div class="card-body">
                 <form action="/pinjaman/tambah" method="POST" id="formPinjaman">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="mb-3">
                         <label class="form-label">No Anggota</label>
                         {% if is_admin %}
@@ -188,17 +189,24 @@
                                 <td>
                                     {% if is_admin %}
                                         {% if p['status'] == 'Menunggu' %}
-                                            <a href="/pinjaman/konfirmasi/{{ p['id_pinjaman'] }}" class="btn btn-sm btn-success"
-                                               onclick="return confirm('Setujui pinjaman ini?')" title="Setujui">
-                                                <i class="fas fa-check"></i>
-                                            </a>
-                                            <a href="/pinjaman/tolak/{{ p['id_pinjaman'] }}" class="btn btn-sm btn-warning text-dark"
-                                               onclick="return confirm('Tolak pinjaman ini?')" title="Tolak">
-                                                <i class="fas fa-xmark"></i>
-                                            </a>
+                                            <form action="/pinjaman/konfirmasi/{{ p['id_pinjaman'] }}" method="POST" class="d-inline"
+                                                  onsubmit="return confirm('Setujui pinjaman ini?')">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                <button type="submit" class="btn btn-sm btn-success" title="Setujui">
+                                                    <i class="fas fa-check"></i>
+                                                </button>
+                                            </form>
+                                            <form action="/pinjaman/tolak/{{ p['id_pinjaman'] }}" method="POST" class="d-inline"
+                                                  onsubmit="return confirm('Tolak pinjaman ini?')">
+                                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                <button type="submit" class="btn btn-sm btn-warning text-dark" title="Tolak">
+                                                    <i class="fas fa-xmark"></i>
+                                                </button>
+                                            </form>
                                         {% endif %}
                                         {% if p['status'] == 'Disetujui' and (p['sisa_pinjaman']|float) > 0 %}
                                         <form action="{{ url_for('angsur_pinjaman', id_pinjaman=p['id_pinjaman']) }}" method="POST" class="d-inline-flex flex-column gap-1" style="max-width:220px;">
+                                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                             <input type="text" name="keterangan" class="form-control form-control-sm" placeholder="Keterangan bayar (opsional)">
                                             <div class="d-flex gap-1">
                                                 <button type="submit" class="btn btn-sm btn-primary flex-fill" title="Bayar cicilan (admin)">
@@ -359,14 +367,20 @@
                                 <td class="small"><code>{{ c.get('va_number', '-') or '-' }}</code></td>
                                 <td class="small">{{ c['keterangan'] }}</td>
                                 <td>
-                                    <a href="/pinjaman/cicilan/konfirmasi/{{ c['id_cicilan'] }}" class="btn btn-sm btn-success"
-                                       onclick="return confirm('Setujui pengajuan bayar cicilan ini?')">
-                                        <i class="fas fa-check"></i>
-                                    </a>
-                                    <a href="/pinjaman/cicilan/tolak/{{ c['id_cicilan'] }}" class="btn btn-sm btn-danger"
-                                       onclick="return confirm('Tolak pengajuan bayar cicilan ini?')">
-                                        <i class="fas fa-xmark"></i>
-                                    </a>
+                                    <form action="/pinjaman/cicilan/konfirmasi/{{ c['id_cicilan'] }}" method="POST" class="d-inline"
+                                          onsubmit="return confirm('Setujui pengajuan bayar cicilan ini?')">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-sm btn-success">
+                                            <i class="fas fa-check"></i>
+                                        </button>
+                                    </form>
+                                    <form action="/pinjaman/cicilan/tolak/{{ c['id_cicilan'] }}" method="POST" class="d-inline"
+                                          onsubmit="return confirm('Tolak pengajuan bayar cicilan ini?')">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-sm btn-danger">
+                                            <i class="fas fa-xmark"></i>
+                                        </button>
+                                    </form>
                                 </td>
                             </tr>
                             {% else %}
@@ -392,6 +406,7 @@
                 <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
             </div>
             <form id="formAjukanCicilanUser" method="POST" enctype="multipart/form-data">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="idempotency_key" id="inputIdempotencyKey" value="">
                 <div class="modal-body">
                     <style>
@@ -925,6 +940,8 @@ function formatRupiahNumber(value) {
     return n.toLocaleString('id-ID');
 }
 
+const csrfTokenValue = '{{ csrf_token }}';
+
 function renderCicilanMenunggu(items) {
     const tbody = document.getElementById('tbodyCicilanMenunggu');
     const badge = document.getElementById('badgeCicilanMenungguCount');
@@ -953,14 +970,20 @@ function renderCicilanMenunggu(items) {
             <td class="small"><code>${escapeHtml(c.va_number || '-')}</code></td>
             <td class="small">${escapeHtml(c.keterangan || '-')}</td>
             <td>
-                <a href="/pinjaman/cicilan/konfirmasi/${encodeURIComponent(c.id_cicilan)}" class="btn btn-sm btn-success"
-                   onclick="return confirm('Setujui pengajuan bayar cicilan ini?')">
-                    <i class="fas fa-check"></i>
-                </a>
-                <a href="/pinjaman/cicilan/tolak/${encodeURIComponent(c.id_cicilan)}" class="btn btn-sm btn-danger"
-                   onclick="return confirm('Tolak pengajuan bayar cicilan ini?')">
-                    <i class="fas fa-xmark"></i>
-                </a>
+                <form action="/pinjaman/cicilan/konfirmasi/${encodeURIComponent(c.id_cicilan)}" method="POST" class="d-inline"
+                      onsubmit="return confirm('Setujui pengajuan bayar cicilan ini?')">
+                    <input type="hidden" name="csrf_token" value="${escapeHtml(csrfTokenValue)}">
+                    <button type="submit" class="btn btn-sm btn-success">
+                        <i class="fas fa-check"></i>
+                    </button>
+                </form>
+                <form action="/pinjaman/cicilan/tolak/${encodeURIComponent(c.id_cicilan)}" method="POST" class="d-inline"
+                      onsubmit="return confirm('Tolak pengajuan bayar cicilan ini?')">
+                    <input type="hidden" name="csrf_token" value="${escapeHtml(csrfTokenValue)}">
+                    <button type="submit" class="btn btn-sm btn-danger">
+                        <i class="fas fa-xmark"></i>
+                    </button>
+                </form>
             </td>
         </tr>
     `).join('');

@@ -19,6 +19,7 @@
                     <i class="fas fa-download me-1"></i>Unduh contoh Excel
                 </a>
                 <form action="{{ url_for('preview_import_csv_anggota') }}" method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="mb-3">
                         <label class="form-label">File Excel</label>
                         <input type="file" name="file_csv" class="form-control" accept=".xlsx,.xlsm,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" required>

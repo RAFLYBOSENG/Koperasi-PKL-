@@ -11,6 +11,7 @@
             <div class="card-body">
                 {% if is_admin %}
                 <form action="/anggota/tambah" method="POST">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="mb-3">
                         <label class="form-label">No Anggota (opsional, manual)</label>
                         <input type="text" name="no_anggota" class="form-control" placeholder="Contoh: AGT-0030">
@@ -62,6 +63,7 @@
                 </form>
                 <hr>
                 <form action="{{ url_for('import_anggota_excel') }}" method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <label class="form-label">Upload Excel Anggota (Upsert)</label>
                     <input type="file" name="file_excel" class="form-control mb-2" accept=".xlsx,.xlsm" required>
                     <div class="form-text mb-2">Kolom minimal: <code>nik</code> atau <code>no_anggota</code>, disarankan ada <code>nama</code>.</div>
@@ -147,10 +149,13 @@
                                     <a href="{{ url_for('edit_anggota', id_anggota=a['id_anggota']) }}" class="btn btn-sm btn-warning text-dark" title="Edit">
                                         <i class="fas fa-pen"></i>
                                     </a>
-                                    <a href="/anggota/hapus/{{ a['id_anggota'] }}" class="btn btn-sm btn-danger"
-                                       onclick="return confirm('Hapus anggota ini?')" title="Hapus">
-                                        <i class="fas fa-trash"></i>
-                                    </a>
+                                    <form action="/anggota/hapus/{{ a['id_anggota'] }}" method="POST" class="d-inline"
+                                          onsubmit="return confirm('Hapus anggota ini?')">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-sm btn-danger" title="Hapus">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
                                     {% endif %}
                                 </td>
                             </tr>
