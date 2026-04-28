@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Selamat Datang - Koperasi</title>
+    <title>Selamat Datang - Koperasi Indonesia</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
@@ -15,6 +15,12 @@
             background-size: cover;
             background-position: center;
             color: #fff;
+        }
+        .landing-brand-logo {
+            width: 92px;
+            height: 92px;
+            object-fit: contain;
+            filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.18));
         }
         .section-alt { background: #f8fafc; }
         .stat-card { border-radius: 0.75rem; border: none; box-shadow: 0 0.25rem 1rem rgba(0,0,0,.06); }
@@ -39,10 +45,12 @@
         <div class="container py-5">
             <div class="row align-items-center">
                 <div class="col-lg-8">
+                    <img src="{{ url_for('static', filename='logo/koperasi-indonesia-logo-png_seeklogo-79842.png') }}" alt="Logo Koperasi Indonesia" class="landing-brand-logo mb-3">
                     <p class="text-uppercase small fw-semibold text-white-50 mb-2">Selamat datang di portal resmi</p>
-                    <h1 class="display-5 fw-bold mb-3">Membangun Kesejahteraan Bersama di Koperasi Kami</h1>
+                    <h1 class="display-5 fw-bold mb-3">Membangun Kesejahteraan Bersama di Koperasi Indonesia</h1>
                     <p class="lead text-white-75 mb-4">
-                        Solusi finansial mudah, aman, dan amanah untuk anggota—kelola simpanan dan pinjaman dalam satu sistem terintegrasi.
+                        Koperasi Indonesia hadir sebagai solusi finansial yang mudah, aman, dan amanah untuk anggota.
+                        Kelola simpanan dan pinjaman dalam satu sistem terintegrasi.
                     </p>
                     <div class="d-flex flex-wrap gap-2">
                         <a href="{{ url_for('login') }}" class="btn btn-light btn-lg px-4 shadow-sm">
@@ -51,7 +59,7 @@
                         <a href="#layanan" class="btn btn-outline-light btn-lg px-4">Pelajari layanan</a>
                     </div>
                     <p class="small text-white-50 mt-3 mb-0">
-                        <i class="fas fa-user-plus me-1"></i><strong>Daftar jadi anggota:</strong> hubungi pengurus koperasi atau admin untuk pencatatan data—setelah terdaftar, Anda akan mendapat akun untuk mengakses portal ini.
+                        <i class="fas fa-user-plus me-1"></i><strong>Daftar jadi anggota:</strong> hubungi pengurus Koperasi Indonesia atau admin untuk pencatatan data—setelah terdaftar, Anda akan mendapat akun untuk mengakses portal ini.
                     </p>
                 </div>
             </div>
@@ -123,7 +131,7 @@
                         <div class="card-body">
                             <h3 class="h6 fw-bold text-secondary"><i class="fas fa-store me-2"></i>Unit usaha</h3>
                             <p class="small text-muted mb-0">
-                                Modul ini fokus pada administrasi simpanan &amp; pinjaman. Jika koperasi Anda punya kantin/mini market, data dapat dikembangkan terpisah di fase berikutnya.
+                                Modul ini fokus pada administrasi simpanan &amp; pinjaman di Koperasi Indonesia. Jika ada unit usaha lain, data dapat dikembangkan terpisah di fase berikutnya.
                             </p>
                         </div>
                     </div>
@@ -135,7 +143,7 @@
     <!-- 4. Keunggulan -->
     <section class="py-5">
         <div class="container">
-            <h2 class="h4 fw-bold text-center mb-4">Mengapa melalui koperasi?</h2>
+            <h2 class="h4 fw-bold text-center mb-4">Mengapa melalui Koperasi Indonesia?</h2>
             <div class="row g-3">
                 <div class="col-md-6 col-lg-3">
                     <div class="d-flex gap-3">
@@ -184,7 +192,7 @@
             <ul class="small text-muted mb-0">
                 <li><strong>Export Excel:</strong> setelah login sebagai admin, buka menu <strong>Laporan</strong> untuk mengunduh data simpanan dan pinjaman.</li>
                 <li><strong>Lupa password anggota:</strong> gunakan halaman <a href="{{ url_for('lupa_password') }}">Lupa password</a> dengan memverifikasi nomor anggota.</li>
-                <li><strong>Formulir PDF:</strong> belum terhubung file—silakan gunakan dokumen fisik dari pengurus koperasi jika diperlukan.</li>
+                <li><strong>Formulir PDF:</strong> belum terhubung file—silakan gunakan dokumen fisik dari pengurus Koperasi Indonesia jika diperlukan.</li>
             </ul>
         </div>
     </section>
@@ -283,7 +291,7 @@
                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">Bagaimana cara berhenti jadi anggota?</button>
                     </h3>
                     <div id="faq1" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
-                        <div class="accordion-body small text-muted">Pengurangan keanggotaan mengikuti AD/ART koperasi. Silakan ajukan secara tertulis kepada pengurus—proses administrasi dilakukan di luar sistem ini.</div>
+                        <div class="accordion-body small text-muted">Pengurangan keanggotaan mengikuti AD/ART Koperasi Indonesia. Silakan ajukan secara tertulis kepada pengurus—proses administrasi dilakukan di luar sistem ini.</div>
                     </div>
                 </div>
                 <div class="accordion-item border rounded mb-2 overflow-hidden">
@@ -291,7 +299,7 @@
                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">Berapa maksimal pinjaman yang bisa saya ambil?</button>
                     </h3>
                     <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
-                        <div class="accordion-body small text-muted">Batas plafon mengacu pada kebijakan koperasi dan kemampuan bayar. Di aplikasi, Anda mengajukan plafon; keputusan akhir oleh admin setelah verifikasi.</div>
+                        <div class="accordion-body small text-muted">Batas plafon mengacu pada kebijakan Koperasi Indonesia dan kemampuan bayar. Di aplikasi, Anda mengajukan plafon; keputusan akhir oleh admin setelah verifikasi.</div>
                     </div>
                 </div>
                 <div class="accordion-item border rounded mb-2 overflow-hidden">
@@ -348,7 +356,7 @@
             </div>
             <div class="row align-items-center">
                 <div class="col-md-8 small">
-                    <strong class="text-white">Sistem Informasi Koperasi</strong> — akses data untuk anggota &amp; pengurus.
+                    <strong class="text-white">Sistem Informasi Koperasi Indonesia</strong> — akses data untuk anggota &amp; pengurus.
                 </div>
                 <div class="col-md-4 text-md-end mt-2 mt-md-0">
                     <a href="{{ url_for('login') }}" class="btn btn-sm btn-outline-light me-2">Login</a>

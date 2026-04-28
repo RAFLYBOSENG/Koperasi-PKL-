@@ -94,7 +94,7 @@
 }
 
 .table-responsive {
-    max-height: 330px; /* sekitar 6 baris data + header */
+    max-height: 540px; /* sekitar 6 baris data + header */
     overflow-y: auto;
 }
 
