@@ -15,6 +15,18 @@
             height: 40px;
             object-fit: contain;
         }
+        .notif-dropdown-menu {
+            width: min(92vw, 380px);
+            max-height: 420px;
+            overflow: hidden;
+        }
+        .notif-list-scroll {
+            max-height: 300px;
+            overflow-y: auto;
+        }
+        .notif-counter {
+            font-size: 0.65rem;
+        }
     </style>
     <script>
         window.IS_AUTHENTICATED = {{ 'true' if current_user else 'false' }};
@@ -68,6 +80,41 @@
                         {% endif %}
                     </span>
                     <div class="ms-auto d-flex align-items-center gap-3">
+                        {% if current_user and is_admin %}
+                            <div class="dropdown">
+                                <button class="btn btn-sm btn-outline-secondary position-relative" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Notifikasi pengajuan">
+                                    <i class="fas fa-bell"></i>
+                                    {% if notif_pengajuan_count > 0 %}
+                                        <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-danger notif-counter">
+                                            {{ notif_pengajuan_count if notif_pengajuan_count < 100 else '99+' }}
+                                        </span>
+                                    {% endif %}
+                                </button>
+                                <div class="dropdown-menu dropdown-menu-end shadow-sm p-0 notif-dropdown-menu">
+                                    <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
+                                        <strong class="small">Notifikasi Pengajuan</strong>
+                                        <span class="badge bg-danger">{{ notif_pengajuan_count }}</span>
+                                    </div>
+                                    {% if notif_pengajuan_items %}
+                                        <div class="notif-list-scroll">
+                                            {% for n in notif_pengajuan_items %}
+                                            <a class="dropdown-item py-2 border-bottom" href="{{ n.url }}">
+                                                <div class="small fw-semibold text-dark">{{ n.jenis }}</div>
+                                                <div class="small text-muted">{{ n.nama }} • {{ n.nominal }}</div>
+                                                <div class="small text-secondary">{{ n.tanggal }}</div>
+                                            </a>
+                                            {% endfor %}
+                                        </div>
+                                        <div class="px-3 py-2 text-end bg-light">
+                                            <a href="/pinjaman" class="small text-decoration-none me-2">Lihat Pinjaman</a>
+                                            <a href="/simpanan" class="small text-decoration-none">Lihat Simpanan</a>
+                                        </div>
+                                    {% else %}
+                                        <div class="px-3 py-3 small text-muted">Belum ada pengajuan pinjaman/simpanan yang menunggu.</div>
+                                    {% endif %}
+                                </div>
+                            </div>
+                        {% endif %}
                         <span class="text-muted">
                             <i class="fas fa-calendar me-1"></i>
                             {{ now }}

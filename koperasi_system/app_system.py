@@ -2035,8 +2035,54 @@ def add_no_cache_headers(response):
     return response
 
 
+def _build_admin_pengajuan_notifications(limit: int = 8):
+    """Kumpulkan notifikasi pengajuan pinjaman & simpanan yang masih menunggu untuk admin."""
+    if not is_current_user_admin():
+        return [], 0
+
+    items = []
+
+    pinjaman_rows = baca_csv(FILE_PINJAMAN)
+    for p in pinjaman_rows:
+        if (p.get('status') or '').strip() != 'Menunggu':
+            continue
+        try:
+            nominal = float(p.get('plafon') or 0)
+        except (TypeError, ValueError):
+            nominal = 0.0
+        items.append({
+            'jenis': 'Pinjaman',
+            'nama': (p.get('nama_anggota') or '-').strip() or '-',
+            'tanggal': (p.get('tanggal_pengajuan') or '-').strip() or '-',
+            'nominal': f"Rp {nominal:,.0f}",
+            'url': '/pinjaman',
+        })
+
+    simpanan_rows = baca_csv(FILE_SIMPANAN_PENGAJUAN)
+    for s in simpanan_rows:
+        if (s.get('status') or '').strip() != 'Menunggu':
+            continue
+        try:
+            nominal = float(s.get('jumlah') or 0)
+        except (TypeError, ValueError):
+            nominal = 0.0
+        jenis_simpanan = (s.get('jenis_simpanan') or 'Simpanan').strip() or 'Simpanan'
+        items.append({
+            'jenis': f"Simpanan ({jenis_simpanan})",
+            'nama': (s.get('nama_anggota') or '-').strip() or '-',
+            'tanggal': (s.get('tanggal_pengajuan') or '-').strip() or '-',
+            'nominal': f"Rp {nominal:,.0f}",
+            'url': '/simpanan',
+        })
+
+    items.sort(key=lambda x: x.get('tanggal', ''), reverse=True)
+    total = len(items)
+    return items[:limit], total
+
+
 @app.context_processor
 def inject_globals():
+    notif_pengajuan_items, notif_pengajuan_count = _build_admin_pengajuan_notifications()
     return {
         'now': datetime.now().strftime('%d %B %Y'),
         'current_user': session.get('user'),
@@ -2044,6 +2090,8 @@ def inject_globals():
         'is_admin': is_current_user_admin(),
         'current_id_anggota': get_current_user_id_anggota(),
         'csrf_token': _get_or_create_csrf_token(),
+        'notif_pengajuan_items': notif_pengajuan_items,
+        'notif_pengajuan_count': notif_pengajuan_count,
     }
 
 
