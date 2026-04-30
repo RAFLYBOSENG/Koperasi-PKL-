@@ -25,6 +25,78 @@
         .section-alt { background: #f8fafc; }
         .stat-card { border-radius: 0.75rem; border: none; box-shadow: 0 0.25rem 1rem rgba(0,0,0,.06); }
         .simulasi-box { max-width: 520px; }
+        .berita-slider-wrap {
+            position: relative;
+        }
+        .berita-scroll {
+            display: grid;
+            grid-auto-flow: column;
+            grid-auto-columns: minmax(280px, 1fr);
+            gap: 16px;
+            overflow-x: auto;
+            scroll-behavior: smooth;
+            padding-bottom: 0;
+            scrollbar-width: none;
+            -ms-overflow-style: none;
+            cursor: grab;
+            user-select: none;
+        }
+        .berita-scroll.dragging {
+            cursor: grabbing;
+        }
+        .berita-scroll::-webkit-scrollbar {
+            display: none;
+        }
+        .berita-card {
+            min-height: 100%;
+        }
+        .berita-image {
+            width: 100%;
+            height: 170px;
+            object-fit: cover;
+        }
+        .berita-edge {
+            position: absolute;
+            top: 0;
+            bottom: 0;
+            width: 72px;
+            border: 0;
+            background: transparent;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            z-index: 5;
+            padding: 0;
+        }
+        .berita-edge-left {
+            left: 0;
+        }
+        .berita-edge-right {
+            right: 0;
+        }
+        .berita-edge-left:hover {
+            background: linear-gradient(to right, rgba(9, 30, 66, 0.28), rgba(9, 30, 66, 0));
+        }
+        .berita-edge-right:hover {
+            background: linear-gradient(to left, rgba(9, 30, 66, 0.28), rgba(9, 30, 66, 0));
+        }
+        .berita-nav-btn {
+            width: 36px;
+            height: 36px;
+            border-radius: 999px;
+            border: 0;
+            background: #1e3a5f;
+            color: #fff;
+            opacity: 0;
+            transform: translateY(4px);
+            transition: opacity 0.2s ease, transform 0.2s ease;
+            pointer-events: none;
+        }
+        .berita-edge:hover .berita-nav-btn {
+            opacity: 1;
+            transform: translateY(0);
+            pointer-events: auto;
+        }
     </style>
 </head>
 <body class="bg-white">
@@ -245,39 +317,41 @@
         </div>
     </section>
 
-    <!-- 6. Berita & kegiatan (statis) -->
+    <!-- 6. Berita & kegiatan -->
     <section class="py-5 section-alt" id="berita">
         <div class="container">
-            <h2 class="h4 fw-bold mb-4">Berita &amp; kegiatan</h2>
-            <div class="row g-4">
-                <div class="col-md-4">
-                    <div class="card h-100 border-0 shadow-sm">
+            <h2 class="h4 fw-bold mb-3">Berita &amp; kegiatan</h2>
+            {% if berita_items %}
+            <div class="berita-slider-wrap">
+                <div class="berita-scroll" id="beritaScroll">
+                {% for berita in berita_items %}
+                    <article class="card berita-card border-0 shadow-sm">
+                        {% if berita.foto %}
+                        <img src="{{ url_for('static', filename=berita.foto) }}" alt="Foto {{ berita.judul }}" class="berita-image rounded-top">
+                        {% endif %}
                         <div class="card-body">
-                            <span class="badge bg-secondary mb-2">Kegiatan</span>
-                            <h3 class="h6 fw-bold">RAT (Rapat Anggota Tahunan)</h3>
-                            <p class="small text-muted mb-0">Dokumentasi dan jadwal RAT dapat ditampilkan di sini setelah konten disiapkan pengurus.</p>
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <span class="badge bg-secondary">{{ berita.kategori }}</span>
+                                <small class="text-muted">{{ berita.tanggal }}</small>
+                            </div>
+                            <h3 class="h6 fw-bold">{{ berita.judul }}</h3>
+                            <p class="small text-muted mb-0">{{ berita.isi }}</p>
                         </div>
-                    </div>
+                    </article>
+                {% endfor %}
                 </div>
-                <div class="col-md-4">
-                    <div class="card h-100 border-0 shadow-sm">
-                        <div class="card-body">
-                            <span class="badge bg-info text-dark mb-2">Sosial</span>
-                            <h3 class="h6 fw-bold">Pembagian sembako / beasiswa</h3>
-                            <p class="small text-muted mb-0">Informasi program kesejahteraan anggota dapat ditambahkan sebagai pengumuman resmi.</p>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-md-4">
-                    <div class="card h-100 border-0 shadow-sm">
-                        <div class="card-body">
-                            <span class="badge bg-success mb-2">Pengumuman</span>
-                            <h3 class="h6 fw-bold">Pembaruan sistem</h3>
-                            <p class="small text-muted mb-0">Portal ini mendukung pengajuan simpanan &amp; pinjaman dengan persetujuan admin.</p>
-                        </div>
-                    </div>
-                </div>
+                <button type="button" class="berita-edge berita-edge-left" id="beritaPrev" aria-label="Geser kiri">
+                    <span class="berita-nav-btn"><i class="fas fa-chevron-left"></i></span>
+                </button>
+                <button type="button" class="berita-edge berita-edge-right" id="beritaNext" aria-label="Geser kanan">
+                    <span class="berita-nav-btn"><i class="fas fa-chevron-right"></i></span>
+                </button>
             </div>
+            {% else %}
+            <div class="alert alert-light border small text-muted mb-0">
+                Belum ada berita yang dipublikasikan oleh admin.
+            </div>
+            {% endif %}
         </div>
     </section>
 
@@ -448,6 +522,114 @@
                 })
                 .catch(function() { alert('Gagal menghitung. Periksa koneksi atau jalankan ulang aplikasi.'); });
         });
+
+        var beritaScroll = document.getElementById('beritaScroll');
+        var beritaPrev = document.getElementById('beritaPrev');
+        var beritaNext = document.getElementById('beritaNext');
+        var autoNewsRaf = null;
+        var autoNewsPaused = false;
+        var autoLastTs = 0;
+        var NEWS_AUTO_SPEED = 0.03; // px per ms (~30px/detik)
+
+        function getNewsStep() {
+            if (!beritaScroll) return 320;
+            return Math.max(240, Math.floor(beritaScroll.clientWidth * 0.75));
+        }
+
+        function updateBeritaEdgeState() {
+            if (!beritaScroll) return;
+            var canScroll = beritaScroll.scrollWidth > beritaScroll.clientWidth + 6;
+            if (beritaPrev) beritaPrev.style.display = canScroll ? 'flex' : 'none';
+            if (beritaNext) beritaNext.style.display = canScroll ? 'flex' : 'none';
+        }
+
+        function autoNewsLoop(ts) {
+            if (!beritaScroll) return;
+            if (!autoLastTs) autoLastTs = ts;
+            var dt = ts - autoLastTs;
+            autoLastTs = ts;
+
+            if (!autoNewsPaused) {
+                var maxScroll = beritaScroll.scrollWidth - beritaScroll.clientWidth;
+                if (maxScroll > 0) {
+                    var next = beritaScroll.scrollLeft + (dt * NEWS_AUTO_SPEED);
+                    if (next >= maxScroll - 1) {
+                        beritaScroll.scrollLeft = 0;
+                    } else {
+                        beritaScroll.scrollLeft = next;
+                    }
+                }
+            }
+            autoNewsRaf = window.requestAnimationFrame(autoNewsLoop);
+        }
+
+        function startAutoNewsScroll() {
+            if (!beritaScroll) return;
+            autoNewsPaused = false;
+            if (!autoNewsRaf) {
+                autoLastTs = 0;
+                autoNewsRaf = window.requestAnimationFrame(autoNewsLoop);
+            }
+        }
+
+        function stopAutoNewsScroll() {
+            autoNewsPaused = true;
+        }
+
+        if (beritaScroll) {
+            updateBeritaEdgeState();
+            window.addEventListener('resize', updateBeritaEdgeState);
+
+            if (beritaPrev) {
+                beritaPrev.addEventListener('click', function() {
+                    stopAutoNewsScroll();
+                    beritaScroll.scrollBy({ left: -getNewsStep(), behavior: 'smooth' });
+                    startAutoNewsScroll();
+                });
+            }
+            if (beritaNext) {
+                beritaNext.addEventListener('click', function() {
+                    stopAutoNewsScroll();
+                    beritaScroll.scrollBy({ left: getNewsStep(), behavior: 'smooth' });
+                    startAutoNewsScroll();
+                });
+            }
+
+            beritaScroll.addEventListener('mouseenter', function() {
+                stopAutoNewsScroll();
+            });
+            beritaScroll.addEventListener('mouseleave', startAutoNewsScroll);
+            beritaScroll.addEventListener('touchstart', function() {
+                stopAutoNewsScroll();
+            }, { passive: true });
+            beritaScroll.addEventListener('touchend', startAutoNewsScroll, { passive: true });
+
+            var isDraggingNews = false;
+            var dragStartX = 0;
+            var startScrollLeft = 0;
+
+            beritaScroll.addEventListener('mousedown', function(e) {
+                isDraggingNews = true;
+                beritaScroll.classList.add('dragging');
+                dragStartX = e.pageX;
+                startScrollLeft = beritaScroll.scrollLeft;
+                stopAutoNewsScroll();
+            });
+            window.addEventListener('mouseup', function() {
+                if (!isDraggingNews) return;
+                isDraggingNews = false;
+                beritaScroll.classList.remove('dragging');
+                startAutoNewsScroll();
+            });
+            beritaScroll.addEventListener('mousemove', function(e) {
+                if (!isDraggingNews) return;
+                e.preventDefault();
+                var dx = e.pageX - dragStartX;
+                beritaScroll.scrollLeft = startScrollLeft - dx;
+            });
+
+            startAutoNewsScroll();
+        }
 
             syncSimTenorByJenis();
     })();

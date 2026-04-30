@@ -25,19 +25,20 @@
                     <div class="mb-3">
                         <label class="form-label">Role</label>
                         <select name="role" class="form-select" required>
-                            <option value="user" selected>User</option>
-                            <option value="admin">Admin</option>
+                            {% for role_value, role_label in role_options %}
+                            <option value="{{ role_value }}" {% if role_value == 'anggota' %}selected{% endif %}>{{ role_label }}</option>
+                            {% endfor %}
                         </select>
                     </div>
                     <div class="mb-3">
-                        <label class="form-label">Anggota (untuk role user)</label>
+                        <label class="form-label">Anggota (untuk role anggota/user)</label>
                         <select name="id_anggota" class="form-select">
                             <option value="">-- Tidak dikaitkan (untuk admin) --</option>
                             {% for a in anggota %}
                             <option value="{{ a['id_anggota'] }}">{{ a['no_anggota'] }} - {{ a['nama'] }}</option>
                             {% endfor %}
                         </select>
-                        <div class="form-text">Jika role = user, pilih 1 anggota agar user hanya melihat data anggota itu.</div>
+                        <div class="form-text">Jika role anggota/user, pilih 1 anggota agar akun hanya melihat data anggota itu.</div>
                     </div>
                     <button type="submit" class="btn btn-dark w-100">
                         <i class="fas fa-save me-1"></i>Simpan Akun
@@ -72,8 +73,8 @@
                                 <td>{{ loop.index }}</td>
                                 <td class="fw-bold">{{ u['username'] }}</td>
                                 <td>
-                                    <span class="badge bg-{{ 'danger' if u['role']=='admin' else 'secondary' }}">
-                                        {{ 'Admin' if u['role']=='admin' else 'User' }}
+                                    <span class="badge bg-{{ 'danger' if u['role'] in ['admin','super_admin','admin_koperasi'] else 'secondary' }}">
+                                        {{ role_labels.get(u['role'], u['role']|replace('_', ' ')|title) }}
                                     </span>
                                 </td>
                                 <td>

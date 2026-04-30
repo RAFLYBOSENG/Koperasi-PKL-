@@ -3,6 +3,7 @@ import csv
 import calendar
 import re
 import json
+import shutil
 import uuid
 import smtplib
 import hmac
@@ -36,6 +37,8 @@ from koperasi_system.settings import (
     FILE_USERS,
     FILE_PENDAFTARAN_ANGGOTA,
     FILE_IMPORT_LOG,
+    FILE_BERITA,
+    BACKUP_DIR,
     DSR_DEFAULT,
     PROVISI_RATE_LONG_TENOR,
     PROVISI_MIN_TENOR_BULAN,
@@ -80,6 +83,7 @@ USER_SESSION_TIMEOUT_MINUTES = int(os.getenv('USER_SESSION_TIMEOUT_MINUTES', '12
 MAX_BUKTI_TRANSFER_BYTES = int(os.getenv('MAX_BUKTI_TRANSFER_BYTES', str(2 * 1024 * 1024)))
 
 _FAILED_LOGIN_STATE = {}
+_LAST_AUTO_BACKUP_DATE = None
 
 
 def _safe_next_url(raw_next: str, default_url: str) -> str:
@@ -90,7 +94,7 @@ def _safe_next_url(raw_next: str, default_url: str) -> str:
 
 
 def _role_home_url(role: str) -> str:
-    if role == 'admin':
+    if (role or '').strip().lower() in STAFF_ROLES:
         return url_for('admin_portal.dashboard')
     return url_for('public_portal.dashboard')
 
@@ -171,8 +175,60 @@ def _is_supported_image_signature(ext: str, header: bytes) -> bool:
         return len(header) >= 12 and header[:4] == b'RIFF' and header[8:12] == b'WEBP'
     return False
 
+
+def _read_berita_items() -> list[dict]:
+    if not os.path.exists(FILE_BERITA):
+        return []
+    try:
+        with open(FILE_BERITA, 'r', encoding='utf-8') as fh:
+            raw_items = json.load(fh)
+    except Exception:
+        return []
+
+    if not isinstance(raw_items, list):
+        return []
+
+    items = []
+    for item in raw_items:
+        if not isinstance(item, dict):
+            continue
+        items.append({
+            'id': str(item.get('id') or str(uuid.uuid4())),
+            'judul': (item.get('judul') or '').strip(),
+            'kategori': (item.get('kategori') or 'Pengumuman').strip() or 'Pengumuman',
+            'isi': (item.get('isi') or '').strip(),
+            'tanggal': (item.get('tanggal') or datetime.now().strftime('%Y-%m-%d')).strip(),
+            'status': (item.get('status') or 'Aktif').strip() or 'Aktif',
+            'foto': (item.get('foto') or '').strip(),
+        })
+    items.sort(key=lambda x: x.get('tanggal', ''), reverse=True)
+    return items
+
+
+def _write_berita_items(items: list[dict]) -> None:
+    cleaned_items = []
+    for item in items or []:
+        if not isinstance(item, dict):
+            continue
+        cleaned_items.append({
+            'id': str(item.get('id') or str(uuid.uuid4())),
+            'judul': (item.get('judul') or '').strip(),
+            'kategori': (item.get('kategori') or 'Pengumuman').strip() or 'Pengumuman',
+            'isi': (item.get('isi') or '').strip(),
+            'tanggal': (item.get('tanggal') or datetime.now().strftime('%Y-%m-%d')).strip(),
+            'status': (item.get('status') or 'Aktif').strip() or 'Aktif',
+            'foto': (item.get('foto') or '').strip(),
+        })
+    cleaned_items.sort(key=lambda x: x.get('tanggal', ''), reverse=True)
+    os.makedirs(os.path.dirname(FILE_BERITA), exist_ok=True)
+    with open(FILE_BERITA, 'w', encoding='utf-8') as fh:
+        json.dump(cleaned_items, fh, ensure_ascii=False, indent=2)
+
 UPLOAD_BUKTI_DIR = os.path.join(app.static_folder, 'uploads', 'bukti_transfer')
 ALLOWED_BUKTI_EXT = {'.png', '.jpg', '.jpeg', '.webp'}
+UPLOAD_BERITA_DIR = os.path.join(app.static_folder, 'uploads', 'berita')
+ALLOWED_BERITA_EXT = {'.png', '.jpg', '.jpeg', '.webp'}
+MAX_BERITA_IMAGE_BYTES = int(os.getenv('MAX_BERITA_IMAGE_BYTES', str(2 * 1024 * 1024)))
 
 PAYMENT_STATUS_DRAFT = 'Draft'
 PAYMENT_STATUS_WAITING_PAYMENT = 'Menunggu Pembayaran'
@@ -341,6 +397,50 @@ def _save_bukti_transfer(file_storage, id_pinjaman: str) -> str:
     out_path = os.path.join(UPLOAD_BUKTI_DIR, out_name)
     file_storage.save(out_path)
     return f"uploads/bukti_transfer/{out_name}"
+
+
+def _save_berita_image(file_storage, berita_id: str) -> str:
+    """Simpan foto berita dan kembalikan path relatif dari /static; '' jika tidak valid."""
+    if not file_storage or not getattr(file_storage, 'filename', ''):
+        return ''
+    filename = secure_filename(file_storage.filename or '')
+    _, ext = os.path.splitext(filename.lower())
+    if ext not in ALLOWED_BERITA_EXT:
+        return ''
+    try:
+        file_storage.stream.seek(0, os.SEEK_END)
+        file_size = file_storage.stream.tell()
+        file_storage.stream.seek(0)
+    except Exception:
+        file_size = 0
+    if file_size <= 0 or file_size > MAX_BERITA_IMAGE_BYTES:
+        return ''
+    header = file_storage.stream.read(16)
+    file_storage.stream.seek(0)
+    if not _is_supported_image_signature(ext, header):
+        return ''
+
+    os.makedirs(UPLOAD_BERITA_DIR, exist_ok=True)
+    safe_id = re.sub(r'[^a-zA-Z0-9_-]+', '', (berita_id or 'berita'))[:40] or 'berita'
+    out_name = f"berita_{safe_id}_{datetime.now().strftime('%Y%m%d%H%M%S')}_{uuid.uuid4().hex[:8]}{ext}"
+    out_path = os.path.join(UPLOAD_BERITA_DIR, out_name)
+    file_storage.save(out_path)
+    return f"uploads/berita/{out_name}"
+
+
+def _delete_static_file_relpath(rel_path: str) -> None:
+    rel = (rel_path or '').strip().replace('\\', '/')
+    if not rel:
+        return
+    abs_path = os.path.abspath(os.path.join(app.static_folder, rel))
+    static_abs = os.path.abspath(app.static_folder)
+    if not abs_path.startswith(static_abs):
+        return
+    try:
+        if os.path.exists(abs_path):
+            os.remove(abs_path)
+    except OSError:
+        pass
 
 def _format_currency_idr(value: float) -> str:
     return f"Rp {float(value or 0):,.0f}"
@@ -579,29 +679,23 @@ def init_csv():
         tulis_csv(FILE_PINJAMAN, [], PINJAMAN_FIELDNAMES)
     if not os.path.exists(FILE_PINJAMAN_CICILAN):
         tulis_csv(FILE_PINJAMAN_CICILAN, [], CICILAN_FIELDNAMES)
-    default_users = [
-        {
-            'id_user': str(uuid.uuid4()),
-            'username': 'admin',
-            'password_hash': generate_password_hash('Admin@123'),
-            'role': 'admin',
-            'id_anggota': '',
-            'created_at': datetime.now().strftime('%Y-%m-%d')
-        },
-        {
-            'id_user': str(uuid.uuid4()),
-            'username': 'user',
-            'password_hash': generate_password_hash('User@1234'),
-            'role': 'user',
-            'id_anggota': '',
-            'created_at': datetime.now().strftime('%Y-%m-%d')
-        }
-    ]
     if db_mode:
         if not baca_csv(FILE_USERS):
+            default_users, _ = _seed_default_user_rows([])
             tulis_csv(FILE_USERS, default_users, ['id_user', 'username', 'password_hash', 'role', 'id_anggota', 'created_at'])
+        else:
+            users = baca_csv(FILE_USERS)
+            users, added = _seed_default_user_rows(users)
+            if added:
+                tulis_csv(FILE_USERS, users, ['id_user', 'username', 'password_hash', 'role', 'id_anggota', 'created_at'])
     elif not os.path.exists(FILE_USERS):
+        default_users, _ = _seed_default_user_rows([])
         tulis_csv(FILE_USERS, default_users, ['id_user', 'username', 'password_hash', 'role', 'id_anggota', 'created_at'])
+    else:
+        users = baca_csv(FILE_USERS)
+        users, added = _seed_default_user_rows(users)
+        if added:
+            tulis_csv(FILE_USERS, users, ['id_user', 'username', 'password_hash', 'role', 'id_anggota', 'created_at'])
     # Mode DB: pendaftaran_anggota dikelola di PostgreSQL, tidak perlu file Excel harian.
     if (not db_mode) and (not os.path.exists(FILE_PENDAFTARAN_ANGGOTA)):
         tulis_csv(FILE_PENDAFTARAN_ANGGOTA, [], PENDAFTARAN_FIELDNAMES)
@@ -615,13 +709,14 @@ def kategori_pinjaman_dari_tenor(tenor_bulan: int) -> str:
     return 'Jangka Pendek'
 
 
-# Mode file (legacy): lakukan migrasi CSV->Excel dan bootstrap file.
-# Mode DB: operasi harian tidak bergantung Excel, jadi jangan jalankan otomatis.
-if not _is_db_mode_enabled():
-    # Migrasi CSV lama ke Excel
-    migrate_csv_to_excel()
-    # Inisialisasi file Excel
-    init_csv()
+def bootstrap_storage_files():
+    """Jalankan bootstrap file setelah semua fungsi global terdefinisi."""
+    # Mode file (legacy): lakukan migrasi CSV->Excel dan bootstrap file.
+    # Mode DB: operasi harian tidak bergantung Excel, jadi jangan jalankan otomatis.
+    if not _is_db_mode_enabled():
+        migrate_csv_to_excel()
+        init_csv()
+        _ensure_role_linked_demo_data()
 
 
 def migrate_simpanan_ke_saldo():
@@ -1749,7 +1844,7 @@ def get_current_user_id_anggota():
 
 
 def is_current_user_admin():
-    return session.get('role') == 'admin'
+    return (session.get('role') or '').strip().lower() in ADMIN_PANEL_ROLES
 
 
 SIMPANAN_RULES = {
@@ -1970,6 +2065,191 @@ def ensure_users_schema():
     tulis_csv(FILE_USERS, users, ['id_user', 'username', 'password_hash', 'role', 'id_anggota', 'created_at'])
 
 
+ROLE_LABELS = {
+    'super_admin': 'Super Admin',
+    'admin_koperasi': 'Admin Koperasi',
+    'bendahara': 'Bendahara',
+    'ketua_pengurus': 'Ketua Pengurus',
+    'anggota': 'Anggota',
+    'auditor': 'Auditor',
+    'admin': 'Admin',
+    'user': 'User',
+}
+
+STAFF_ROLES = {'admin', 'super_admin', 'admin_koperasi', 'bendahara', 'ketua_pengurus', 'auditor'}
+ADMIN_PANEL_ROLES = {'admin', 'super_admin', 'admin_koperasi', 'bendahara', 'ketua_pengurus', 'auditor'}
+MEMBER_ROLES = {'user', 'anggota'}
+ROLE_OPTIONS = [
+    ('super_admin', 'Super Admin'),
+    ('admin_koperasi', 'Admin Koperasi'),
+    ('bendahara', 'Bendahara'),
+    ('ketua_pengurus', 'Ketua Pengurus'),
+    ('anggota', 'Anggota'),
+    ('auditor', 'Auditor'),
+    ('admin', 'Admin (legacy)'),
+    ('user', 'User (legacy)'),
+]
+
+DEFAULT_USER_SEEDS = [
+    {'username': 'superadmin', 'password': 'Admin@123', 'role': 'super_admin', 'id_anggota': ''},
+    {'username': 'adminkoperasi', 'password': 'Admin@123', 'role': 'admin_koperasi', 'id_anggota': ''},
+    {'username': 'bendahara', 'password': 'Bendahara@123', 'role': 'bendahara', 'id_anggota': ''},
+    {'username': 'ketuapengurus', 'password': 'Ketua@123', 'role': 'ketua_pengurus', 'id_anggota': ''},
+    {'username': 'anggota_demo', 'password': 'Anggota@123', 'role': 'anggota', 'id_anggota': ''},
+    {'username': 'auditor', 'password': 'Auditor@123', 'role': 'auditor', 'id_anggota': ''},
+]
+
+
+def _seed_default_user_rows(users: list[dict]) -> tuple[list[dict], int]:
+    existing_usernames = {str(u.get('username') or '').strip().lower() for u in users if isinstance(u, dict)}
+    added = 0
+    for seed in DEFAULT_USER_SEEDS:
+        username = seed['username'].strip().lower()
+        if username in existing_usernames:
+            continue
+        users.append({
+            'id_user': str(uuid.uuid4()),
+            'username': seed['username'],
+            'password_hash': generate_password_hash(seed['password']),
+            'role': seed['role'],
+            'id_anggota': seed['id_anggota'],
+            'created_at': datetime.now().strftime('%Y-%m-%d'),
+        })
+        existing_usernames.add(username)
+        added += 1
+    return users, added
+
+
+def _ensure_role_linked_demo_data() -> None:
+    """Buat data demo lintas modul agar role bisa diuji end-to-end."""
+    today = datetime.now().strftime('%Y-%m-%d')
+    anggota_rows = baca_csv(FILE_ANGGOTA)
+    users = baca_csv(FILE_USERS)
+    simpanan_rows = baca_csv(FILE_SIMPANAN)
+    simpanan_tx_rows = baca_csv(FILE_SIMPANAN_TRANSAKSI)
+    simpanan_pengajuan_rows = baca_csv(FILE_SIMPANAN_PENGAJUAN)
+    pinjaman_rows = baca_csv(FILE_PINJAMAN)
+    cicilan_rows = baca_csv(FILE_PINJAMAN_CICILAN)
+
+    demo_member_id = 'AGT-DEMO-001'
+    demo_member_no = 'KOP-0001'
+    demo_member_name = 'Anggota Demo'
+
+    if not any((r.get('id_anggota') or '').strip() == demo_member_id for r in anggota_rows):
+        anggota_rows.append({
+            'id_anggota': demo_member_id,
+            'no_anggota': demo_member_no,
+            'nik': '3273000000000001',
+            'nama': demo_member_name,
+            'alamat': 'Bandung',
+            'no_telp': '081200000001',
+            'tgl_bergabung': today,
+            'no_rekening': '000111222333',
+            'nama_bank': 'BCA',
+            'penghasilan_bersih': '6500000',
+            'cicilan_lain': '500000',
+            'simpanan_pokok': '250000',
+        })
+        tulis_csv(FILE_ANGGOTA, anggota_rows, ANGGOTA_FIELDNAMES)
+
+    changed_users = False
+    for user in users:
+        if (user.get('username') or '').strip().lower() == 'anggota_demo':
+            if (user.get('id_anggota') or '').strip() != demo_member_id:
+                user['id_anggota'] = demo_member_id
+                changed_users = True
+            if not (user.get('role') or '').strip():
+                user['role'] = 'anggota'
+                changed_users = True
+            break
+    if changed_users:
+        tulis_csv(FILE_USERS, users, ['id_user', 'username', 'password_hash', 'role', 'id_anggota', 'created_at'])
+
+    if not any((r.get('id_anggota') or '').strip() == demo_member_id for r in simpanan_rows):
+        simpanan_rows.append({'id_anggota': demo_member_id, 'total_simpanan': '1750000'})
+        tulis_csv(FILE_SIMPANAN, simpanan_rows, SIMPANAN_FIELDNAMES)
+
+    if not any((r.get('id_anggota') or '').strip() == demo_member_id for r in simpanan_tx_rows):
+        simpanan_tx_rows.append({
+            'id_transaksi': str(uuid.uuid4()),
+            'id_anggota': demo_member_id,
+            'no_anggota': demo_member_no,
+            'nama_anggota': demo_member_name,
+            'tanggal': today,
+            'jenis_simpanan': 'Manasuka',
+            'jumlah': '500000',
+            'keterangan': 'Setoran awal demo',
+            'diajukan_oleh': 'admin_koperasi',
+        })
+        tulis_csv(FILE_SIMPANAN_TRANSAKSI, simpanan_tx_rows, SIMPANAN_TRANSAKSI_FIELDNAMES)
+
+    if not any((r.get('id_anggota') or '').strip() == demo_member_id for r in simpanan_pengajuan_rows):
+        simpanan_pengajuan_rows.append({
+            'id_pengajuan': str(uuid.uuid4()),
+            'id_anggota': demo_member_id,
+            'no_anggota': demo_member_no,
+            'nama_anggota': demo_member_name,
+            'tanggal_pengajuan': today,
+            'jenis_simpanan': 'Manasuka',
+            'jumlah': '200000',
+            'keterangan': 'Pengajuan setoran dari anggota',
+            'status': 'Menunggu',
+            'tanggal_konfirmasi': '',
+            'dikonfirmasi_oleh': '',
+            'diajukan_oleh': 'anggota_demo',
+        })
+        tulis_csv(FILE_SIMPANAN_PENGAJUAN, simpanan_pengajuan_rows, SIMPANAN_PENGAJUAN_FIELDNAMES)
+
+    demo_loan = next((r for r in pinjaman_rows if (r.get('id_anggota') or '').strip() == demo_member_id), None)
+    if demo_loan is None:
+        loan_id = str(uuid.uuid4())
+        pinjaman_rows.append({
+            'id_pinjaman': loan_id,
+            'id_anggota': demo_member_id,
+            'nama_anggota': demo_member_name,
+            'no_anggota': demo_member_no,
+            'jenis_pinjaman': 'Jangka Pendek',
+            'jenis_simpanan': 'Manasuka',
+            'plafon': '3000000',
+            'tenor_awal': '12',
+            'tenor_bulan': '12',
+            'bunga_persen': '1.5',
+            'total_bayar': '3540000',
+            'cicilan_per_bulan': '295000',
+            'sisa_pinjaman': '3540000',
+            'tanggal_pengajuan': today,
+            'status': 'Menunggu Persetujuan',
+            'tanggal_lunas': '',
+        })
+        tulis_csv(FILE_PINJAMAN, pinjaman_rows, PINJAMAN_FIELDNAMES)
+    else:
+        loan_id = demo_loan.get('id_pinjaman') or ''
+
+    if loan_id and not any((r.get('id_pinjaman') or '').strip() == loan_id for r in cicilan_rows):
+        cicilan_rows.append({
+            'id_cicilan': str(uuid.uuid4()),
+            'id_pinjaman': loan_id,
+            'id_anggota': demo_member_id,
+            'no_anggota': demo_member_no,
+            'nama_anggota': demo_member_name,
+            'jumlah': '295000',
+            'tanggal_pengajuan': today,
+            'status': 'Menunggu',
+            'tanggal_konfirmasi': '',
+            'dikonfirmasi_oleh': '',
+            'diajukan_oleh': 'anggota_demo',
+            'keterangan': 'Upload bukti cicilan pertama',
+            'metode_pembayaran': 'Transfer Bank',
+            'detail_pembayaran': '',
+            'status_transaksi': 'pending',
+            'va_number': '',
+            'idempotency_key': '',
+            'periode_tagihan': f'{datetime.now().year}-{datetime.now().month:02d}',
+            'expires_at': '',
+        })
+        tulis_csv(FILE_PINJAMAN_CICILAN, cicilan_rows, CICILAN_FIELDNAMES)
+
+
 def login_required(view_func):
     @wraps(view_func)
     def wrapper(*args, **kwargs):
@@ -1984,10 +2264,154 @@ def admin_required(view_func):
     def wrapper(*args, **kwargs):
         if not session.get('user'):
             return redirect(url_for('login', next=request.path))
-        if session.get('role') != 'admin':
+        if (session.get('role') or '').strip().lower() not in ADMIN_PANEL_ROLES:
             abort(403)
         return view_func(*args, **kwargs)
     return wrapper
+
+
+ROLE_PERMISSIONS = {
+    'admin': {
+        'members.view',
+        'members.manage',
+        'savings.deposit.request',
+        'savings.deposit.input',
+        'savings.deposit.validate',
+        'savings.withdraw.request',
+        'savings.withdraw.validate',
+        'loan.documents.review',
+        'loan.disbursement.input',
+        'installments.manage',
+        'reports.export',
+        'reports.strategic.view',
+        'shu.view',
+        'excel.import',
+        'news.manage',
+    },
+    'super_admin': {
+        'members.view',
+        'members.manage',
+        'savings.deposit.request',
+        'savings.deposit.input',
+        'savings.deposit.validate',
+        'savings.withdraw.request',
+        'savings.withdraw.validate',
+        'loan.documents.review',
+        'loan.eligibility.analyze',
+        'loans.approve',
+        'loan.disbursement.input',
+        'installments.manage',
+        'cash.manage',
+        'shu.manage',
+        'shu.validate',
+        'shu.view',
+        'reports.export',
+        'reports.strategic.view',
+        'backup.manage',
+        'excel.import',
+        'news.manage',
+        'users.manage',
+        'roles.manage',
+        'audit.view',
+        'system.manage',
+    },
+    'admin_koperasi': {
+        'members.view',
+        'members.manage',
+        'savings.deposit.request',
+        'savings.deposit.input',
+        'savings.deposit.validate',
+        'savings.withdraw.request',
+        'savings.withdraw.validate',
+        'loan.documents.review',
+        'loan.disbursement.input',
+        'installments.manage',
+        'reports.export',
+        'reports.strategic.view',
+        'shu.view',
+        'excel.import',
+        'news.manage',
+    },
+    'bendahara': {
+        'members.view',
+        'members.manage.limited',
+        'savings.deposit.request',
+        'savings.deposit.input',
+        'savings.deposit.validate',
+        'savings.withdraw.request',
+        'savings.withdraw.validate',
+        'loan.eligibility.analyze',
+        'loan.disbursement.input',
+        'installments.manage',
+        'cash.manage',
+        'shu.manage',
+        'shu.view',
+        'reports.export',
+        'reports.strategic.view',
+        'excel.import',
+    },
+    'ketua_pengurus': {
+        'members.view',
+        'loans.approve',
+        'reports.export',
+        'reports.strategic.view',
+        'shu.validate',
+        'shu.view',
+    },
+    'anggota': {
+        'members.self.view',
+        'members.self.edit.limited',
+        'savings.deposit.request',
+        'savings.withdraw.request',
+        'loan.request',
+        'installments.proof.upload',
+        'shu.self.view',
+        'reports.self.view',
+    },
+    'auditor': {
+        'members.view',
+        'shu.view',
+        'audit.view',
+        'reports.export',
+        'reports.strategic.view',
+    },
+    'user': {
+        'members.self.view',
+        'members.self.edit.limited',
+        'savings.deposit.request',
+        'savings.withdraw.request',
+        'loan.request',
+        'installments.proof.upload',
+        'shu.self.view',
+        'reports.self.view',
+    },
+}
+
+
+def _current_role() -> str:
+    return (session.get('role') or '').strip().lower()
+
+
+def has_permission(permission: str, role: str | None = None) -> bool:
+    role_name = (role or _current_role()).strip().lower()
+    return permission in ROLE_PERMISSIONS.get(role_name, set())
+
+
+def permission_required(*permissions: str):
+    required = [perm.strip() for perm in permissions if perm and perm.strip()]
+
+    def decorator(view_func):
+        @wraps(view_func)
+        @login_required
+        def wrapper(*args, **kwargs):
+            role_name = _current_role()
+            if required and not any(has_permission(permission, role_name) for permission in required):
+                abort(403)
+            return view_func(*args, **kwargs)
+
+        return wrapper
+
+    return decorator
 
 
 def restrict_id_anggota_or_forbid(id_anggota: str):
@@ -2010,8 +2434,8 @@ def enforce_session_timeout():
 
     now_ts = datetime.utcnow().timestamp()
     last_ts = float(session.get('_last_activity_ts') or 0)
-    role = (session.get('role') or 'user').strip()
-    timeout_minutes = ADMIN_SESSION_TIMEOUT_MINUTES if role == 'admin' else USER_SESSION_TIMEOUT_MINUTES
+    role = (session.get('role') or 'user').strip().lower()
+    timeout_minutes = ADMIN_SESSION_TIMEOUT_MINUTES if role in STAFF_ROLES else USER_SESSION_TIMEOUT_MINUTES
 
     if last_ts and (now_ts - last_ts) > (timeout_minutes * 60):
         session.clear()
@@ -2020,7 +2444,49 @@ def enforce_session_timeout():
 
     session['_last_activity_ts'] = now_ts
     session.permanent = True
+    _maybe_run_daily_backup()
     return None
+
+
+def _backup_legacy_data() -> None:
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    stamp = datetime.now().strftime('%Y%m%d-%H%M%S')
+    target_dir = os.path.join(BACKUP_DIR, stamp)
+    os.makedirs(target_dir, exist_ok=True)
+    source_files = [
+        FILE_ANGGOTA,
+        FILE_SIMPANAN,
+        FILE_SIMPANAN_TRANSAKSI,
+        FILE_SIMPANAN_PENGAJUAN,
+        FILE_IURAN_SOSIAL,
+        FILE_PINJAMAN,
+        FILE_PINJAMAN_CICILAN,
+        FILE_USERS,
+        FILE_PENDAFTARAN_ANGGOTA,
+        FILE_IMPORT_LOG,
+        FILE_BERITA,
+    ]
+    copied = []
+    for source in source_files:
+        if not os.path.exists(source):
+            continue
+        destination = os.path.join(target_dir, os.path.basename(source))
+        shutil.copy2(source, destination)
+        copied.append(os.path.basename(source))
+    with open(os.path.join(target_dir, 'manifest.json'), 'w', encoding='utf-8') as fh:
+        json.dump({'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'files': copied}, fh, ensure_ascii=False, indent=2)
+
+
+def _maybe_run_daily_backup() -> None:
+    global _LAST_AUTO_BACKUP_DATE
+    today = datetime.now().date()
+    if _LAST_AUTO_BACKUP_DATE == today:
+        return
+    try:
+        _backup_legacy_data()
+        _LAST_AUTO_BACKUP_DATE = today
+    except Exception as exc:
+        print(f'Error auto backup data: {exc}')
 
 
 @app.after_request
@@ -2104,6 +2570,7 @@ def landing():
         return redirect(url_for('dashboard'))
     ensure_simpanan_schema()
     ensure_pinjaman_plafon_schema()
+    berita_items = [item for item in _read_berita_items() if (item.get('status') or 'Aktif') == 'Aktif']
     anggota = baca_csv(FILE_ANGGOTA)
     simpanan = baca_csv(FILE_SIMPANAN)
     pinjaman = baca_csv(FILE_PINJAMAN)
@@ -2122,6 +2589,7 @@ def landing():
         total_pinjaman_disalurkan=total_pinjaman_disalurkan,
         shu_estimasi_ilustratif=shu_estimasi_ilustratif,
         total_simpanan_disetujui=total_simpanan_disetujui,
+        berita_items=berita_items,
     )
 
 
@@ -2198,13 +2666,13 @@ def login():
         session.clear()
 
         session['user'] = user.get('username')
-        session['role'] = user.get('role')
+        session['role'] = (user.get('role') or '').strip().lower()
         session['id_user'] = user.get('id_user')
         session['id_anggota'] = user.get('id_anggota', '')
         session['_csrf_token'] = token_hex(32)
         session['_last_activity_ts'] = datetime.utcnow().timestamp()
         session.permanent = True
-        if session.get('role') == 'user' and not session.get('id_anggota'):
+        if session.get('role') in MEMBER_ROLES and not session.get('id_anggota'):
             session.clear()
             flash('Akun ini belum dihubungkan ke anggota. Hubungi admin.', 'danger')
             return render_template('login.html', next=next_url), 403
@@ -2276,17 +2744,19 @@ def logout():
 # ══════════════════════════════════════════════
 @app.route('/users')
 @admin_required
+@permission_required('users.manage')
 def users_index():
     ensure_users_schema()
     users = baca_csv(FILE_USERS)
     anggota = baca_csv(FILE_ANGGOTA)
     anggota_map = {a.get('id_anggota'): a for a in anggota}
-    users.sort(key=lambda u: (u.get('role') != 'admin', (u.get('username') or '').lower()))
-    return render_template('users.html', users=users, anggota=anggota, anggota_map=anggota_map)
+    users.sort(key=lambda u: ((u.get('role') or '') not in ADMIN_PANEL_ROLES, (u.get('username') or '').lower()))
+    return render_template('users.html', users=users, anggota=anggota, anggota_map=anggota_map, role_options=ROLE_OPTIONS, role_labels=ROLE_LABELS)
 
 
 @app.route('/users/tambah', methods=['POST'])
 @admin_required
+@permission_required('users.manage')
 @csrf_protect
 def users_tambah():
     ensure_users_schema()
@@ -2302,15 +2772,18 @@ def users_tambah():
     if not ok_pol:
         flash(msg_pol, 'danger')
         return redirect(url_for('users_index'))
-    if role not in ('admin', 'user'):
+    if role not in {value for value, _ in ROLE_OPTIONS}:
         flash('Role tidak valid.', 'danger')
+        return redirect(url_for('users_index'))
+    if role not in MEMBER_ROLES and not has_permission('roles.manage'):
+        flash('Hanya Super Admin yang dapat membuat role staf/non-anggota.', 'danger')
         return redirect(url_for('users_index'))
     if get_user_by_username(username):
         flash('Username sudah dipakai. Gunakan username lain.', 'danger')
         return redirect(url_for('users_index'))
 
-    if role == 'user' and not id_anggota:
-        flash('Untuk role user, wajib pilih anggota.', 'danger')
+    if role in MEMBER_ROLES and not id_anggota:
+        flash('Untuk role anggota/user, wajib pilih anggota.', 'danger')
         return redirect(url_for('users_index'))
 
     if id_anggota:
@@ -2325,7 +2798,7 @@ def users_tambah():
         'username': username,
         'password_hash': generate_password_hash(password),
         'role': role,
-        'id_anggota': id_anggota if role == 'user' else '',
+        'id_anggota': id_anggota if role in MEMBER_ROLES else '',
         'created_at': datetime.now().strftime('%Y-%m-%d')
     })
     tulis_csv(FILE_USERS, users, ['id_user', 'username', 'password_hash', 'role', 'id_anggota', 'created_at'])
@@ -2335,6 +2808,7 @@ def users_tambah():
 
 @app.route('/users/reset_password/<id_user>', methods=['POST'])
 @admin_required
+@permission_required('users.manage')
 @csrf_protect
 def users_reset_password(id_user):
     ensure_users_schema()
@@ -2365,6 +2839,7 @@ def users_reset_password(id_user):
 
 @app.route('/users/hapus/<id_user>', methods=['POST'])
 @admin_required
+@permission_required('users.manage')
 @csrf_protect
 def users_hapus(id_user):
     ensure_users_schema()
@@ -2382,6 +2857,138 @@ def users_hapus(id_user):
     tulis_csv(FILE_USERS, users, ['id_user', 'username', 'password_hash', 'role', 'id_anggota', 'created_at'])
     flash('User berhasil dihapus.', 'success')
     return redirect(url_for('users_index'))
+
+
+# ══════════════════════════════════════════════
+#  ROUTE: MANAJEMEN BERITA (ADMIN)
+# ══════════════════════════════════════════════
+@app.route('/berita-admin')
+@admin_required
+@permission_required('news.manage')
+def berita_admin_index():
+    berita_items = _read_berita_items()
+    edit_id = (request.args.get('edit_id') or '').strip()
+    edit_item = next((item for item in berita_items if item.get('id') == edit_id), None)
+    if edit_id and not edit_item:
+        flash('Data berita yang ingin diedit tidak ditemukan.', 'warning')
+    return render_template('admin_berita.html', berita_items=berita_items, edit_item=edit_item)
+
+
+@app.route('/berita-admin/simpan', methods=['POST'])
+@admin_required
+@permission_required('news.manage')
+@csrf_protect
+def berita_admin_simpan():
+    berita_items = _read_berita_items()
+    berita_id = (request.form.get('id') or '').strip()
+    judul = (request.form.get('judul') or '').strip()
+    kategori = (request.form.get('kategori') or 'Pengumuman').strip() or 'Pengumuman'
+    isi = (request.form.get('isi') or '').strip()
+    tanggal = (request.form.get('tanggal') or '').strip() or datetime.now().strftime('%Y-%m-%d')
+    status = (request.form.get('status') or 'Aktif').strip() or 'Aktif'
+    foto_file = request.files.get('foto')
+
+    if not judul or not isi:
+        flash('Judul dan isi berita wajib diisi.', 'danger')
+        if berita_id:
+            return redirect(url_for('berita_admin_index', edit_id=berita_id))
+        return redirect(url_for('berita_admin_index'))
+
+    if status not in ('Aktif', 'Nonaktif'):
+        status = 'Aktif'
+
+    if berita_id:
+        target_item = None
+        for item in berita_items:
+            if item.get('id') == berita_id:
+                target_item = item
+                break
+        if not target_item:
+            flash('Berita yang ingin diedit tidak ditemukan.', 'danger')
+            return redirect(url_for('berita_admin_index'))
+
+        if foto_file and getattr(foto_file, 'filename', ''):
+            new_foto = _save_berita_image(foto_file, berita_id)
+            if not new_foto:
+                flash('Upload foto gagal. Gunakan PNG/JPG/JPEG/WEBP maksimal 2MB.', 'danger')
+                return redirect(url_for('berita_admin_index', edit_id=berita_id))
+            old_foto = (target_item.get('foto') or '').strip()
+            target_item['foto'] = new_foto
+            if old_foto and old_foto != new_foto:
+                _delete_static_file_relpath(old_foto)
+
+        target_item['judul'] = judul
+        target_item['kategori'] = kategori
+        target_item['isi'] = isi
+        target_item['tanggal'] = tanggal
+        target_item['status'] = status
+        message = 'Berita berhasil diperbarui.'
+    else:
+        new_id = str(uuid.uuid4())
+        foto = ''
+        if foto_file and getattr(foto_file, 'filename', ''):
+            foto = _save_berita_image(foto_file, new_id)
+            if not foto:
+                flash('Upload foto gagal. Gunakan PNG/JPG/JPEG/WEBP maksimal 2MB.', 'danger')
+                return redirect(url_for('berita_admin_index'))
+        berita_items.append({
+            'id': new_id,
+            'judul': judul,
+            'kategori': kategori,
+            'isi': isi,
+            'tanggal': tanggal,
+            'status': status,
+            'foto': foto,
+        })
+        message = 'Berita berhasil ditambahkan.'
+
+    _write_berita_items(berita_items)
+    flash(message, 'success')
+    return redirect(url_for('berita_admin_index'))
+
+
+@app.route('/berita-admin/hapus/<berita_id>', methods=['POST'])
+@admin_required
+@permission_required('news.manage')
+@csrf_protect
+def berita_admin_hapus(berita_id):
+    berita_items = _read_berita_items()
+    target_item = next((item for item in berita_items if item.get('id') == berita_id), None)
+    if not target_item:
+        flash('Berita tidak ditemukan.', 'danger')
+        return redirect(url_for('berita_admin_index'))
+
+    foto = (target_item.get('foto') or '').strip()
+    berita_items = [item for item in berita_items if item.get('id') != berita_id]
+    if foto:
+        _delete_static_file_relpath(foto)
+
+    _write_berita_items(berita_items)
+    flash('Berita berhasil dihapus.', 'success')
+    return redirect(url_for('berita_admin_index'))
+
+
+@app.route('/berita-admin/hapus-foto/<berita_id>', methods=['POST'])
+@admin_required
+@permission_required('news.manage')
+@csrf_protect
+def berita_admin_hapus_foto(berita_id):
+    berita_items = _read_berita_items()
+    target_item = next((item for item in berita_items if item.get('id') == berita_id), None)
+    if not target_item:
+        flash('Berita tidak ditemukan.', 'danger')
+        return redirect(url_for('berita_admin_index'))
+
+    foto = (target_item.get('foto') or '').strip()
+    if not foto:
+        flash('Berita ini belum memiliki foto.', 'warning')
+        return redirect(url_for('berita_admin_index', edit_id=berita_id))
+
+    _delete_static_file_relpath(foto)
+    target_item['foto'] = ''
+    _write_berita_items(berita_items)
+    flash('Foto berita berhasil dihapus.', 'success')
+    return redirect(url_for('berita_admin_index', edit_id=berita_id))
 
 
 def bunga_untuk_jenis_pinjaman(jenis: str, tenor_bulan: int) -> float:
@@ -2567,6 +3174,7 @@ def dashboard():
 
 @app.route('/pengajuan-anggota/konfirmasi/<id_pengajuan>', methods=['POST'])
 @admin_required
+@permission_required('members.manage')
 @csrf_protect
 def konfirmasi_pengajuan_anggota(id_pengajuan):
     ensure_pendaftaran_schema()
@@ -2632,6 +3240,7 @@ def konfirmasi_pengajuan_anggota(id_pengajuan):
 
 @app.route('/pengajuan-anggota/tolak/<id_pengajuan>', methods=['POST'])
 @admin_required
+@permission_required('members.manage')
 @csrf_protect
 def tolak_pengajuan_anggota(id_pengajuan):
     ensure_pendaftaran_schema()
@@ -2656,6 +3265,7 @@ def tolak_pengajuan_anggota(id_pengajuan):
 # ══════════════════════════════════════════════
 @app.route('/anggota')
 @login_required
+@permission_required('members.view', 'members.self.view')
 def halaman_anggota():
     ensure_anggota_schema()
     anggota = baca_csv(FILE_ANGGOTA)
@@ -2672,6 +3282,7 @@ def halaman_anggota():
 
 @app.route('/anggota/tambah', methods=['POST'])
 @admin_required
+@permission_required('members.manage')
 @csrf_protect
 def tambah_anggota():
     ensure_anggota_schema()
@@ -2756,6 +3367,7 @@ def tambah_anggota():
 
 @app.route('/anggota/hapus/<id_anggota>', methods=['POST'])
 @admin_required
+@permission_required('members.manage')
 @csrf_protect
 def hapus_anggota(id_anggota):
     data = baca_csv(FILE_ANGGOTA)
@@ -2765,7 +3377,8 @@ def hapus_anggota(id_anggota):
 
 
 @app.route('/anggota/edit/<id_anggota>', methods=['GET', 'POST'])
-@admin_required
+@login_required
+@permission_required('members.manage', 'members.manage.limited', 'members.self.edit.limited')
 @csrf_protect_if_post
 def edit_anggota(id_anggota):
     ensure_anggota_schema()
@@ -2775,19 +3388,33 @@ def edit_anggota(id_anggota):
         flash('Anggota tidak ditemukan.', 'danger')
         return redirect(url_for('halaman_anggota'))
 
+    can_full_edit = has_permission('members.manage')
+    can_limited_edit = has_permission('members.manage.limited')
+    can_self_edit = has_permission('members.self.edit.limited')
+    if (can_limited_edit or can_self_edit) and not can_full_edit:
+        target_id = data[idx].get('id_anggota')
+        if can_self_edit:
+            restrict_id_anggota_or_forbid(target_id)
     if request.method == 'POST':
         nik = normalize_nik(request.form.get('nik'))
         if nik and not is_valid_nik(nik):
             flash('NIK harus terdiri dari tepat 16 digit angka.', 'danger')
             return redirect(url_for('edit_anggota', id_anggota=id_anggota))
-        data[idx]['nik'] = nik
-        data[idx]['nama'] = (request.form.get('nama') or '').strip()
-        data[idx]['alamat'] = (request.form.get('alamat') or '').strip()
-        data[idx]['no_telp'] = (request.form.get('no_telp') or '').strip()
-        data[idx]['no_rekening'] = (request.form.get('no_rekening') or '').strip()
-        data[idx]['nama_bank'] = (request.form.get('nama_bank') or '').strip()
-        data[idx]['penghasilan_bersih'] = str(int(parse_rupiah_to_float(request.form.get('penghasilan_bersih', '0'))))
-        data[idx]['cicilan_lain'] = str(int(parse_rupiah_to_float(request.form.get('cicilan_lain', '0'))))
+        if can_full_edit:
+            data[idx]['nik'] = nik
+            data[idx]['nama'] = (request.form.get('nama') or '').strip()
+            data[idx]['alamat'] = (request.form.get('alamat') or '').strip()
+            data[idx]['no_telp'] = (request.form.get('no_telp') or '').strip()
+            data[idx]['no_rekening'] = (request.form.get('no_rekening') or '').strip()
+            data[idx]['nama_bank'] = (request.form.get('nama_bank') or '').strip()
+            data[idx]['penghasilan_bersih'] = str(int(parse_rupiah_to_float(request.form.get('penghasilan_bersih', '0'))))
+            data[idx]['cicilan_lain'] = str(int(parse_rupiah_to_float(request.form.get('cicilan_lain', '0'))))
+        else:
+            # Edit terbatas: hanya kontak dan rekening.
+            data[idx]['alamat'] = (request.form.get('alamat') or '').strip()
+            data[idx]['no_telp'] = (request.form.get('no_telp') or '').strip()
+            data[idx]['no_rekening'] = (request.form.get('no_rekening') or '').strip()
+            data[idx]['nama_bank'] = (request.form.get('nama_bank') or '').strip()
         tulis_csv(FILE_ANGGOTA, data, ANGGOTA_FIELDNAMES)
         flash('Data anggota berhasil diperbarui.', 'success')
         return redirect(url_for('halaman_anggota'))
@@ -2796,7 +3423,7 @@ def edit_anggota(id_anggota):
 
 
 @app.route('/anggota/import-excel', methods=['POST'])
-@admin_required
+@permission_required('excel.import')
 @csrf_protect
 def import_anggota_excel():
     """Import anggota dari Excel dengan smart upsert berdasarkan NIK, fallback No Anggota."""
@@ -3264,7 +3891,7 @@ def kategori_pinjaman_dari_tenor(tenor_bulan: int) -> str:
 
 
 @app.route('/import_csv', methods=['POST'])
-@admin_required
+@permission_required('excel.import')
 @csrf_protect
 def import_csv_unified():
     """Unggah satu file (CSV/Excel): merge anggota, akumulasi simpanan & pinjaman (tenor max)."""
@@ -3449,6 +4076,7 @@ def import_csv_unified():
 
 @app.route('/anggota/import-csv', methods=['GET'])
 @admin_required
+@permission_required('excel.import')
 def halaman_import_csv_anggota():
     # Mode DB: ambil langsung 50 terbaru dari PostgreSQL (lebih efisien).
     if _is_db_mode_enabled():
@@ -3462,6 +4090,7 @@ def halaman_import_csv_anggota():
 
 @app.route('/anggota/import-csv/sample')
 @admin_required
+@permission_required('excel.import')
 def download_sample_csv_anggota():
     if Workbook is None:
         flash('Fitur unduh contoh Excel membutuhkan openpyxl.', 'danger')
@@ -3515,6 +4144,7 @@ def download_sample_csv_anggota():
 
 @app.route('/anggota/import-csv/preview', methods=['POST'])
 @admin_required
+@permission_required('excel.import')
 @csrf_protect
 def preview_import_csv_anggota():
     try:
@@ -3544,6 +4174,7 @@ def preview_import_csv_anggota():
 
 @app.route('/anggota/import-csv/preview', methods=['GET'])
 @admin_required
+@permission_required('excel.import')
 def tampil_preview_import_csv():
     token = (request.args.get('token') or '').strip()
     if not token:
@@ -3567,6 +4198,7 @@ def tampil_preview_import_csv():
 
 @app.route('/anggota/import-csv/execute', methods=['POST'])
 @admin_required
+@permission_required('excel.import')
 @csrf_protect
 def execute_import_csv_anggota():
     token = (request.form.get('token') or '').strip()
@@ -3793,6 +4425,7 @@ def cari_anggota_autocomplete():
 # ══════════════════════════════════════════════
 @app.route('/simpanan')
 @login_required
+@permission_required('savings.deposit.input', 'savings.deposit.request', 'savings.deposit.validate', 'savings.withdraw.validate')
 def halaman_simpanan():
     ensure_simpanan_schema()
     ensure_simpanan_transaksi_schema()
@@ -3868,7 +4501,7 @@ def halaman_simpanan():
 
 
 @app.route('/simpanan/tambah', methods=['POST'])
-@login_required
+@permission_required('savings.deposit.input', 'savings.deposit.request')
 @csrf_protect
 def tambah_simpanan():
     ensure_simpanan_schema()
@@ -3985,7 +4618,7 @@ def tambah_simpanan():
 
 
 @app.route('/simpanan/konfirmasi/<id_simpanan>', methods=['POST'])
-@admin_required
+@permission_required('savings.deposit.validate')
 @csrf_protect
 def konfirmasi_simpanan(id_simpanan):
     ensure_simpanan_schema()
@@ -4043,7 +4676,7 @@ def konfirmasi_simpanan(id_simpanan):
 
 
 @app.route('/simpanan/tolak/<id_simpanan>', methods=['POST'])
-@admin_required
+@permission_required('savings.deposit.validate')
 @csrf_protect
 def tolak_simpanan(id_simpanan):
     ensure_simpanan_pengajuan_schema()
@@ -4072,7 +4705,7 @@ def tolak_simpanan(id_simpanan):
 
 
 @app.route('/simpanan/hapus/<id_anggota>', methods=['POST'])
-@admin_required
+@permission_required('savings.deposit.validate')
 @csrf_protect
 def hapus_simpanan(id_anggota):
     data = [s for s in baca_csv(FILE_SIMPANAN) if s.get('id_anggota') != id_anggota]
@@ -4121,6 +4754,7 @@ def cek_saldo(id_anggota):
 # ══════════════════════════════════════════════
 @app.route('/pinjaman')
 @login_required
+@permission_required('loan.documents.review', 'loan.eligibility.analyze', 'loans.approve', 'loan.request', 'loan.disbursement.input')
 def halaman_pinjaman():
     ensure_pinjaman_plafon_schema()
     pinjaman = baca_csv(FILE_PINJAMAN)
@@ -4208,6 +4842,8 @@ def halaman_pinjaman():
 
 
 @app.route('/pinjaman/hitung', methods=['GET'])
+@login_required
+@permission_required('loan.request', 'loan.eligibility.analyze', 'loan.documents.review')
 def hitung_pinjaman():
     """Hitung estimasi pinjaman berdasarkan plafon + tenor fleksibel."""
     try:
@@ -4288,7 +4924,7 @@ def cek_tunggakan(id_anggota):
 
 
 @app.route('/pinjaman/tambah', methods=['POST'])
-@login_required
+@permission_required('loan.request', 'loan.disbursement.input')
 @csrf_protect
 def tambah_pinjaman():
     pinjaman = baca_csv(FILE_PINJAMAN)
@@ -4398,7 +5034,7 @@ def tambah_pinjaman():
 
 
 @app.route('/pinjaman/konfirmasi/<id_pinjaman>', methods=['POST'])
-@admin_required
+@permission_required('loans.approve')
 @csrf_protect
 def konfirmasi_pinjaman(id_pinjaman):
     pinjaman = baca_csv(FILE_PINJAMAN)
@@ -4466,7 +5102,7 @@ def konfirmasi_pinjaman(id_pinjaman):
 
 
 @app.route('/pinjaman/tolak/<id_pinjaman>', methods=['POST'])
-@admin_required
+@permission_required('loans.approve')
 @csrf_protect
 def tolak_pinjaman(id_pinjaman):
     pinjaman = baca_csv(FILE_PINJAMAN)
@@ -4538,7 +5174,7 @@ def _jumlah_cicilan_terhitung(cicilan_rows: list, id_pinjaman: str) -> int:
 
 
 @app.route('/pinjaman/angsur/<id_pinjaman>', methods=['POST'])
-@admin_required
+@permission_required('installments.manage')
 @csrf_protect
 def angsur_pinjaman(id_pinjaman):
     """Bayar cicilan langsung oleh admin; mencatat metode Admin di riwayat cicilan."""
@@ -4578,7 +5214,7 @@ def angsur_pinjaman(id_pinjaman):
 
 
 @app.route('/pinjaman/cicilan/gagal-bayar/<id_pinjaman>', methods=['POST'])
-@admin_required
+@permission_required('installments.manage')
 @csrf_protect
 def gagal_bayar_pinjaman(id_pinjaman):
     """Catat cicilan gagal bayar dan akumulasikan ke sisa pinjaman."""
@@ -4667,7 +5303,7 @@ def gagal_bayar_pinjaman(id_pinjaman):
 
 
 @app.route('/pinjaman/ajukan-cicilan/<id_pinjaman>', methods=['POST'])
-@login_required
+@permission_required('installments.proof.upload', 'installments.manage')
 @csrf_protect
 def ajukan_cicilan(id_pinjaman):
     """Pengajuan bayar cicilan oleh user; perlu dikonfirmasi admin sebelum mengurangi sisa pinjaman."""
@@ -4773,7 +5409,7 @@ def ajukan_cicilan(id_pinjaman):
 
 
 @app.route('/pinjaman/cicilan/konfirmasi/<id_cicilan>', methods=['POST'])
-@admin_required
+@permission_required('installments.manage')
 @csrf_protect
 def konfirmasi_cicilan(id_cicilan):
     """Admin menyetujui pengajuan cicilan dan langsung mengurangi sisa pinjaman."""
@@ -4838,7 +5474,7 @@ def konfirmasi_cicilan(id_cicilan):
 
 
 @app.route('/pinjaman/cicilan/menunggu', methods=['GET'])
-@admin_required
+@permission_required('installments.manage')
 def cicilan_menunggu_json():
     """Data pengajuan cicilan menunggu untuk refresh otomatis di halaman pinjaman."""
     ensure_pinjaman_cicilan_schema()
@@ -4870,7 +5506,7 @@ def cicilan_menunggu_json():
 
 
 @app.route('/pinjaman/cicilan/tolak/<id_cicilan>', methods=['POST'])
-@admin_required
+@permission_required('installments.manage')
 @csrf_protect
 def tolak_cicilan(id_cicilan):
     """Admin menolak pengajuan cicilan (tanpa mengubah sisa pinjaman)."""
@@ -4903,7 +5539,7 @@ def tolak_cicilan(id_cicilan):
 
 
 @app.route('/pinjaman/hapus/<id_pinjaman>', methods=['POST'])
-@admin_required
+@permission_required('installments.manage')
 @csrf_protect
 def hapus_pinjaman(id_pinjaman):
     data = [p for p in baca_csv(FILE_PINJAMAN) if p.get('id_pinjaman') != id_pinjaman]
@@ -5108,7 +5744,7 @@ def generate_excel_laporan_terpadu():
 
 
 @app.route('/laporan')
-@login_required
+@permission_required('reports.self.view', 'reports.strategic.view')
 def halaman_laporan():
     ensure_simpanan_schema()
     simpanan = baca_csv(FILE_SIMPANAN)
@@ -5123,7 +5759,7 @@ def halaman_laporan():
 
 
 @app.route('/export/laporan-terpadu')
-@admin_required
+@permission_required('reports.export')
 def export_laporan_terpadu():
     """Upsert anggota dari data pinjaman/simpanan lalu siapkan download Excel 1 file."""
     ensure_simpanan_schema()
@@ -5143,7 +5779,7 @@ def export_laporan_terpadu():
 
 
 @app.route('/export/laporan-terpadu/unduh')
-@admin_required
+@permission_required('reports.export')
 def export_laporan_terpadu_unduh():
     wb_cls = Workbook
     if wb_cls is None:
@@ -5165,7 +5801,7 @@ def export_laporan_terpadu_unduh():
 
 
 @app.route('/export/simpanan')
-@admin_required
+@permission_required('reports.export')
 def export_simpanan():
     ensure_simpanan_schema()
     ensure_simpanan_transaksi_schema()
@@ -5205,7 +5841,7 @@ def export_simpanan():
 
 
 @app.route('/export/pinjaman')
-@admin_required
+@permission_required('reports.export')
 def export_pinjaman():
     ensure_simpanan_transaksi_schema()
     ensure_iuran_sosial_schema()
@@ -5325,11 +5961,12 @@ def laporan_anggota(id_anggota):
 # ══════════════════════════════════════════════
 from koperasi_system.route_aliases import register_route_aliases
 
+bootstrap_storage_files()
 register_route_aliases(app)
 
 if __name__ == '__main__':
     print("=" * 50)
-    print("  APLIKASI KOPERASI BERBASIS WEB")
+    print("  KPRI BLK BANDUNG")
     print("  Login : http://localhost:5000")
     print("=" * 50)
     app.run(debug=False, host='127.0.0.1', port=5000)

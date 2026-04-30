@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Kelola Berita - Koperasi Indonesia{% endblock %}
+{% block content %}
+<div class="row g-4">
+    <div class="col-lg-5">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-dark text-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-newspaper me-2"></i>{{ 'Edit Berita' if edit_item else 'Tambah Berita' }}</h5>
+                {% if edit_item %}
+                <a href="{{ url_for('berita_admin_index') }}" class="btn btn-sm btn-outline-light">Batal edit</a>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                <form action="{{ url_for('berita_admin_simpan') }}" method="POST" enctype="multipart/form-data">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <input type="hidden" name="id" value="{{ edit_item.id if edit_item else '' }}">
+                    <div class="mb-3">
+                        <label class="form-label">Judul</label>
+                        <input type="text" name="judul" class="form-control" value="{{ edit_item.judul if edit_item else '' }}" required>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Kategori</label>
+                        <select name="kategori" class="form-select">
+                            {% set kategori_now = edit_item.kategori if edit_item else 'Pengumuman' %}
+                            <option value="Pengumuman" {% if kategori_now == 'Pengumuman' %}selected{% endif %}>Pengumuman</option>
+                            <option value="Kegiatan" {% if kategori_now == 'Kegiatan' %}selected{% endif %}>Kegiatan</option>
+                            <option value="Sosial" {% if kategori_now == 'Sosial' %}selected{% endif %}>Sosial</option>
+                            <option value="Berita" {% if kategori_now == 'Berita' %}selected{% endif %}>Berita</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Tanggal</label>
+                        <input type="date" name="tanggal" class="form-control" value="{{ edit_item.tanggal if edit_item else '' }}">
+                        <div class="form-text">Kosongkan untuk memakai tanggal hari ini.</div>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Status</label>
+                        {% set status_now = edit_item.status if edit_item else 'Aktif' %}
+                        <select name="status" class="form-select">
+                            <option value="Aktif" {% if status_now == 'Aktif' %}selected{% endif %}>Aktif</option>
+                            <option value="Nonaktif" {% if status_now == 'Nonaktif' %}selected{% endif %}>Nonaktif</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Isi Berita</label>
+                        <textarea name="isi" class="form-control" rows="8" required>{{ edit_item.isi if edit_item else '' }}</textarea>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Foto Berita (opsional)</label>
+                        <input type="file" name="foto" class="form-control" accept=".png,.jpg,.jpeg,.webp,image/png,image/jpeg,image/webp">
+                        <div class="form-text">Ukuran maksimal 2MB. Format: PNG, JPG, JPEG, WEBP.</div>
+                        {% if edit_item and edit_item.foto %}
+                        <div class="mt-2">
+                            <img src="{{ url_for('static', filename=edit_item.foto) }}" alt="Preview foto berita" class="img-fluid rounded border" style="max-height: 150px; object-fit: cover;">
+                        </div>
+                        <div class="mt-2">
+                            <form action="{{ url_for('berita_admin_hapus_foto', berita_id=edit_item.id) }}" method="POST" onsubmit="return confirm('Hapus foto berita ini?')">
+                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                <button type="submit" class="btn btn-sm btn-outline-danger">
+                                    <i class="fas fa-image me-1"></i>Hapus Foto Saja
+                                </button>
+                            </form>
+                        </div>
+                        {% endif %}
+                    </div>
+                    <button type="submit" class="btn btn-dark w-100">
+                        <i class="fas fa-save me-1"></i>{{ 'Perbarui Berita' if edit_item else 'Simpan Berita' }}
+                    </button>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-7">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <h5 class="mb-0"><i class="fas fa-list me-2 text-dark"></i>Daftar Berita</h5>
+                <span class="badge bg-dark">{{ berita_items|length }} item</span>
+            </div>
+            <div class="card-body">
+                <div class="table-responsive">
+                    <table class="table table-hover align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Tanggal</th>
+                                <th>Kategori</th>
+                                <th>Foto</th>
+                                <th>Judul</th>
+                                <th>Status</th>
+                                <th>Aksi</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for berita in berita_items %}
+                            <tr>
+                                <td>{{ berita.tanggal }}</td>
+                                <td><span class="badge bg-secondary">{{ berita.kategori }}</span></td>
+                                <td>
+                                    {% if berita.foto %}
+                                    <img src="{{ url_for('static', filename=berita.foto) }}" alt="Foto {{ berita.judul }}" class="rounded border" style="width: 64px; height: 44px; object-fit: cover;">
+                                    {% else %}
+                                    <span class="text-muted small">-</span>
+                                    {% endif %}
+                                </td>
+                                <td class="fw-semibold">{{ berita.judul }}</td>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if berita.status == 'Aktif' else 'secondary' }}">{{ berita.status }}</span>
+                                </td>
+                                <td class="d-flex gap-2">
+                                    <a href="{{ url_for('berita_admin_index', edit_id=berita.id) }}" class="btn btn-sm btn-outline-primary" title="Edit">
+                                        <i class="fas fa-pen"></i>
+                                    </a>
+                                    <form action="{{ url_for('berita_admin_hapus', berita_id=berita.id) }}" method="POST" onsubmit="return confirm('Hapus berita ini?')">
+                                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                        <button type="submit" class="btn btn-sm btn-outline-danger" title="Hapus">
+                                            <i class="fas fa-trash"></i>
+                                        </button>
+                                    </form>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="6" class="text-center text-muted py-4">Belum ada berita. Tambahkan berita pertama dari form di sebelah kiri.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                <div class="small text-muted mt-2">
+                    Tips: gunakan status <strong>Aktif</strong> agar berita tampil di landing page.
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}

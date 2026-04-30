@@ -63,6 +63,11 @@ def users():
     return _dispatch('users_index')()
 
 
+@admin_portal.route('/berita')
+def berita():
+    return _dispatch('berita_admin_index')()
+
+
 @admin_portal.route('/simpanan')
 def simpanan():
     return _dispatch('halaman_simpanan')()

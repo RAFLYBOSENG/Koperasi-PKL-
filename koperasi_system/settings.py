@@ -21,7 +21,9 @@ FILE_PINJAMAN_CICILAN = os.path.join(DATA_DIR, 'pinjaman_cicilan.xlsx')
 FILE_USERS = os.path.join(DATA_DIR, 'users.xlsx')
 FILE_PENDAFTARAN_ANGGOTA = os.path.join(DATA_DIR, 'pendaftaran_anggota.xlsx')
 FILE_IMPORT_LOG = os.path.join(DATA_DIR, 'import_log.xlsx')
+FILE_BERITA = os.path.join(DATA_DIR, 'berita.json')
 IMPORT_PREVIEW_DIR = os.path.join(DATA_DIR, 'import_preview')
+BACKUP_DIR = os.path.join(DATA_DIR, 'backup')
 
 DSR_DEFAULT = 0.35
 JENIS_SIMPANAN_IMPORT = 'Manasuka'

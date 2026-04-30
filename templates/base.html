@@ -56,6 +56,9 @@
                     <a href="/laporan"><i class="fas fa-chart-line me-2"></i>Laporan</a>
                 </li>
                 {% if is_admin %}
+                <li class="{% if '/admin/berita' in request.path or '/berita-admin' in request.path %}active{% endif %}">
+                    <a href="/admin/berita"><i class="fas fa-newspaper me-2"></i>Kelola Berita</a>
+                </li>
                 <li class="{% if '/users' in request.path %}active{% endif %}">
                     <a href="/users"><i class="fas fa-user-shield me-2"></i>Manajemen User</a>
                 </li>
@@ -76,6 +79,7 @@
                         {% elif '/simpanan' in request.path %} Simpanan
                         {% elif '/pinjaman' in request.path %} Pinjaman
                         {% elif '/laporan' in request.path %} Laporan
+                        {% elif '/admin/berita' in request.path or '/berita-admin' in request.path %} Kelola Berita
                         {% elif '/users' in request.path %} Manajemen User
                         {% endif %}
                     </span>
