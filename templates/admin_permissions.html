@@ -1,0 +1,81 @@
+{% extends 'base.html' %}
+
+{% block title %}Daftar Permissions - Koperasi Indonesia{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <strong>Daftar Semua Permissions</strong>
+  </div>
+  <div class="card-body">
+    <p class="small text-muted">
+      Menampilkan semua permission granular yang terdefinisi di sistem (read-only untuk audit).
+      {% if _is_db_mode %}
+        Sumber: Tabel <code>permissions</code> PostgreSQL.
+      {% else %}
+        Sumber: File <code>app_system.py</code> (legacy).
+      {% endif %}
+    </p>
+
+    <h6>Permissions (Total: {{ permissions|length }})</h6>
+    {% if permissions %}
+      <div class="table-responsive">
+        <table class="table table-sm table-striped">
+          <thead class="table-light">
+            <tr>
+              <th>Permission Name</th>
+              <th>Kategori</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for perm in permissions %}
+            <tr>
+              <td>
+                {% if perm.id_permission %}
+                  <code>{{ perm.permission_name }}</code>
+                  <small class="text-muted">({{ perm.id_permission[:8] }}...)</small>
+                {% else %}
+                  <code>{{ perm.permission_name if perm is mapping else perm }}</code>
+                {% endif %}
+              </td>
+              <td>
+                {%- if (perm.permission_name if perm is mapping else perm).startswith('members.') %}
+                  <span class="badge bg-primary">Members</span>
+                {%- elif (perm.permission_name if perm is mapping else perm).startswith('savings.') %}
+                  <span class="badge bg-success">Savings</span>
+                {%- elif (perm.permission_name if perm is mapping else perm).startswith('loan') or (perm.permission_name if perm is mapping else perm).startswith('loans') %}
+                  <span class="badge bg-warning">Loans</span>
+                {%- elif (perm.permission_name if perm is mapping else perm).startswith('installments.') %}
+                  <span class="badge bg-info">Installments</span>
+                {%- elif (perm.permission_name if perm is mapping else perm).startswith('cash.') %}
+                  <span class="badge bg-secondary">Cash</span>
+                {%- elif (perm.permission_name if perm is mapping else perm).startswith('shu.') %}
+                  <span class="badge bg-danger">SHU</span>
+                {%- elif (perm.permission_name if perm is mapping else perm).startswith('reports.') %}
+                  <span class="badge bg-dark">Reports</span>
+                {%- elif (perm.permission_name if perm is mapping else perm).startswith('backup.') or (perm.permission_name if perm is mapping else perm).startswith('audit.') or (perm.permission_name if perm is mapping else perm).startswith('users.') or (perm.permission_name if perm is mapping else perm).startswith('roles.') or (perm.permission_name if perm is mapping else perm).startswith('system.') %}
+                  <span class="badge bg-secondary">Admin</span>
+                {%- else %}
+                  <span class="badge bg-light text-dark">Other</span>
+                {%- endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-warning">Tidak ada permissions ditemukan.</div>
+    {% endif %}
+
+    <hr class="my-4">
+
+    <div>
+      <a href="{{ url_for('admin_roles') }}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Kembali ke Roles
+      </a>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

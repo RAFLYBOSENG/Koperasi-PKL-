@@ -1,0 +1,65 @@
+[
+  {
+    "id": "9d2cd9df-f3f4-4614-8b8c-26ef6a4948f1",
+    "judul": "shidiq love mutia",
+    "kategori": "Pengumuman",
+    "isi": "semoga balikan lagi aamiin ya allah",
+    "tanggal": "2026-04-29",
+    "status": "Aktif",
+    "foto": ""
+  },
+  {
+    "id": "0fdd7f75-913a-4a37-9d1d-1cecaaf3a685",
+    "judul": "judul 1",
+    "kategori": "Pengumuman",
+    "isi": "tes 1",
+    "tanggal": "2026-04-29",
+    "status": "Aktif",
+    "foto": ""
+  },
+  {
+    "id": "791ae5c5-ffca-450d-b293-e66745ac712c",
+    "judul": "judul 2",
+    "kategori": "Kegiatan",
+    "isi": "tes 2",
+    "tanggal": "2026-04-29",
+    "status": "Aktif",
+    "foto": ""
+  },
+  {
+    "id": "d82cb675-d763-45c0-a383-01154d4ccd0b",
+    "judul": "judul 3",
+    "kategori": "Sosial",
+    "isi": "tes 3",
+    "tanggal": "2026-04-29",
+    "status": "Aktif",
+    "foto": ""
+  },
+  {
+    "id": "5be6d5ee-f493-4f35-9538-08cd707f8d65",
+    "judul": "judul 4",
+    "kategori": "Berita",
+    "isi": "tes 4",
+    "tanggal": "2026-04-29",
+    "status": "Aktif",
+    "foto": ""
+  },
+  {
+    "id": "45efb69c-7486-4bf1-8bf3-748e5dc34031",
+    "judul": "judul 5",
+    "kategori": "Kegiatan",
+    "isi": "tes 5",
+    "tanggal": "2026-04-29",
+    "status": "Aktif",
+    "foto": ""
+  },
+  {
+    "id": "e9019ab7-0ca8-4045-9ef5-adffdea3f1a9",
+    "judul": "judul 6",
+    "kategori": "Pengumuman",
+    "isi": "tes 6",
+    "tanggal": "2026-04-29",
+    "status": "Aktif",
+    "foto": "uploads/berita/berita_e9019ab7-0ca8-4045-9ef5-adffdea3f1a9_20260429094821_b4c3763a.png"
+  }
+]

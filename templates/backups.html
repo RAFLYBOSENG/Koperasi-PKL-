@@ -1,0 +1,59 @@
+{% extends 'base.html' %}
+
+{% block title %}Backups - Koperasi Indonesia{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <strong>Backup Management</strong>
+  </div>
+  <div class="card-body">
+    <p class="small text-muted">Hanya Super Admin dapat mengakses halaman ini. Gunakan tombol <strong>Apply</strong> untuk mengembalikan file dari backup.</p>
+
+    <h6>Available Backups</h6>
+    {% if backups %}
+      <ul class="list-group mb-3">
+        {% for b in backups %}
+        <li class="list-group-item d-flex justify-content-between align-items-center">
+          <div>
+            <div class="fw-semibold">{{ b.stamp }}</div>
+            <div class="small text-muted">{{ b.manifest.created_at if b.manifest.created_at else '' }}</div>
+          </div>
+          <div class="btn-group">
+            <a href="{{ url_for('admin_backups_download', stamp=b.stamp) }}" class="btn btn-sm btn-outline-primary">Download</a>
+            <form method="post" action="{{ url_for('admin_backups_apply', stamp=b.stamp) }}" style="display:inline-block; margin:0;">
+              <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+              <button type="submit" class="btn btn-sm btn-danger" onclick="return confirm('Yakin ingin apply backup ini? Ini akan menimpa file data saat ini.')">Apply</button>
+            </form>
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="small text-muted">Belum ada backup.</div>
+    {% endif %}
+
+    <h6 class="mt-4">Backup Log</h6>
+    {% if backup_log %}
+      <ul class="list-group">
+        {% for e in backup_log|reverse %}
+        <li class="list-group-item">
+          <div class="d-flex justify-content-between">
+            <div>
+              <div><strong>{{ e.type|capitalize }}</strong> - {{ e.stamp }}</div>
+              <div class="small text-muted">{{ e.created_at }}{% if e.applied_by %} • oleh {{ e.applied_by }}{% endif %}</div>
+            </div>
+            {% if e.files %}
+            <div class="small text-secondary">Applied files: {{ e.files|join(', ') }}</div>
+            {% endif %}
+          </div>
+        </li>
+        {% endfor %}
+      </ul>
+    {% else %}
+      <div class="small text-muted">Belum ada catatan backup.</div>
+    {% endif %}
+
+  </div>
+</div>
+{% endblock %}

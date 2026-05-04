@@ -43,22 +43,47 @@
                 <li class="{% if request.path == '/dashboard' %}active{% endif %}">
                     <a href="{{ url_for('dashboard') }}"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</a>
                 </li>
+                {% if 'members.view' in current_permissions or 'members.manage' in current_permissions %}
                 <li class="{% if '/anggota' in request.path %}active{% endif %}">
                     <a href="/anggota"><i class="fas fa-users me-2"></i>Data Anggota</a>
                 </li>
+                {% endif %}
+                {% if 'savings.deposit.request' in current_permissions or 'savings.deposit.input' in current_permissions or 'savings.deposit.validate' in current_permissions or 'savings.withdraw.validate' in current_permissions %}
                 <li class="{% if '/simpanan' in request.path %}active{% endif %}">
                     <a href="/simpanan"><i class="fas fa-piggy-bank me-2"></i>Simpanan</a>
                 </li>
+                {% endif %}
+                {% if 'loan.request' in current_permissions or 'loans.approve' in current_permissions or 'loan.disbursement.input' in current_permissions or 'installments.manage' in current_permissions %}
                 <li class="{% if '/pinjaman' in request.path %}active{% endif %}">
                     <a href="/pinjaman"><i class="fas fa-hand-holding-dollar me-2"></i>Pinjaman</a>
                 </li>
+                {% endif %}
+                {% if 'reports.self.view' in current_permissions or 'reports.strategic.view' in current_permissions %}
                 <li class="{% if '/laporan' in request.path %}active{% endif %}">
                     <a href="/laporan"><i class="fas fa-chart-line me-2"></i>Laporan</a>
                 </li>
-                {% if is_admin %}
+                {% endif %}
+                {% if 'news.manage' in current_permissions %}
                 <li class="{% if '/admin/berita' in request.path or '/berita-admin' in request.path %}active{% endif %}">
                     <a href="/admin/berita"><i class="fas fa-newspaper me-2"></i>Kelola Berita</a>
                 </li>
+                {% endif %}
+                {% if 'backup.manage' in current_permissions %}
+                <li class="{% if '/admin/backups' in request.path %}active{% endif %}">
+                    <a href="/admin/backups"><i class="fas fa-database me-2"></i>Backups</a>
+                </li>
+                {% endif %}
+                {% if 'roles.manage' in current_permissions %}
+                <li class="{% if '/admin/roles' in request.path %}active{% endif %}">
+                    <a href="/admin/roles"><i class="fas fa-shield me-2"></i>Manajemen Roles</a>
+                </li>
+                {% endif %}
+                {% if 'audit.view' in current_permissions %}
+                <li class="{% if '/admin/permissions' in request.path %}active{% endif %}">
+                    <a href="/admin/permissions"><i class="fas fa-lock me-2"></i>Permissions (Audit)</a>
+                </li>
+                {% endif %}
+                {% if 'users.manage' in current_permissions %}
                 <li class="{% if '/users' in request.path %}active{% endif %}">
                     <a href="/users"><i class="fas fa-user-shield me-2"></i>Manajemen User</a>
                 </li>
@@ -84,7 +109,7 @@
                         {% endif %}
                     </span>
                     <div class="ms-auto d-flex align-items-center gap-3">
-                        {% if current_user and is_admin %}
+                        {% if current_user and ('savings.deposit.validate' in current_permissions or 'loans.approve' in current_permissions or 'installments.manage' in current_permissions) %}
                             <div class="dropdown">
                                 <button class="btn btn-sm btn-outline-secondary position-relative" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Notifikasi pengajuan">
                                     <i class="fas fa-bell"></i>
@@ -125,7 +150,7 @@
                         </span>
                         {% if current_user %}
                             <span class="badge bg-{{ 'danger' if is_admin else 'secondary' }}">
-                                {{ current_user }} ({{ 'Admin' if is_admin else 'User' }})
+                                {{ current_user }} ({{ role_labels.get(current_role, current_role|replace('_', ' ')|title) }})
                             </span>
                             <a href="{{ url_for('logout') }}" class="btn btn-sm btn-outline-danger">
                                 <i class="fas fa-right-from-bracket me-1"></i>Logout

@@ -1,0 +1,76 @@
+{% extends 'base.html' %}
+
+{% block title %}Permissions untuk Role: {{ role_info.role_name }} - Koperasi Indonesia{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <strong>Permissions untuk Role: <code>{{ role_info.role_name }}</code></strong>
+  </div>
+  <div class="card-body">
+    <p class="small text-muted">
+      Menampilkan daftar permission yang diberikan ke role <strong>{{ role_info.role_name }}</strong>.
+    </p>
+
+    <div class="alert alert-info">
+      <strong>{{ role_info.role_name }}:</strong> {{ role_info.deskripsi or '-' }}
+    </div>
+
+    <h6>Permissions (Total: {{ permissions|length }})</h6>
+    {% if permissions %}
+      <div class="table-responsive">
+        <table class="table table-sm table-striped">
+          <thead class="table-light">
+            <tr>
+              <th>Permission Name</th>
+              <th>Kategori</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for perm in permissions %}
+            <tr>
+              <td><code>{{ perm }}</code></td>
+              <td>
+                {%- if perm.startswith('members.') %}
+                  <span class="badge bg-primary">Members</span>
+                {%- elif perm.startswith('savings.') %}
+                  <span class="badge bg-success">Savings</span>
+                {%- elif perm.startswith('loan') or perm.startswith('loans') %}
+                  <span class="badge bg-warning">Loans</span>
+                {%- elif perm.startswith('installments.') %}
+                  <span class="badge bg-info">Installments</span>
+                {%- elif perm.startswith('cash.') %}
+                  <span class="badge bg-secondary">Cash</span>
+                {%- elif perm.startswith('shu.') %}
+                  <span class="badge bg-danger">SHU</span>
+                {%- elif perm.startswith('reports.') %}
+                  <span class="badge bg-dark">Reports</span>
+                {%- elif perm.startswith('backup.') or perm.startswith('audit.') or perm.startswith('users.') or perm.startswith('roles.') or perm.startswith('system.') %}
+                  <span class="badge bg-secondary">Admin</span>
+                {%- else %}
+                  <span class="badge bg-light text-dark">Other</span>
+                {%- endif %}
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-warning">Role ini tidak memiliki permission yang diberikan.</div>
+    {% endif %}
+
+    <hr class="my-4">
+
+    <div class="d-flex gap-2">
+      <a href="{{ url_for('admin_roles') }}" class="btn btn-secondary">
+        <i class="fas fa-arrow-left"></i> Kembali ke Roles
+      </a>
+      <a href="{{ url_for('admin_permissions') }}" class="btn btn-info">
+        <i class="fas fa-list"></i> Lihat Semua Permissions
+      </a>
+    </div>
+
+  </div>
+</div>
+{% endblock %}

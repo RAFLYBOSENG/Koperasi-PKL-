@@ -12,6 +12,7 @@ from functools import wraps
 from flask import Flask, render_template, request, redirect, url_for, jsonify, send_file, session, flash, abort
 import io
 import sys
+import zipfile
 from email.mime.text import MIMEText
 from secrets import token_hex
 try:
@@ -203,6 +204,191 @@ def _read_berita_items() -> list[dict]:
         })
     items.sort(key=lambda x: x.get('tanggal', ''), reverse=True)
     return items
+
+
+# --- Backup management UI & actions (super_admin only via permission 'backup.manage')
+@app.route('/admin/backups')
+def admin_backups():
+    if not session.get('user'):
+        return redirect(url_for('login', next=request.path))
+    if not has_permission('backup.manage'):
+        abort(403)
+    entries = []
+    try:
+        if os.path.exists(BACKUP_DIR):
+            for name in sorted(os.listdir(BACKUP_DIR), reverse=True):
+                path = os.path.join(BACKUP_DIR, name)
+                if not os.path.isdir(path):
+                    continue
+                manifest = {}
+                mpath = os.path.join(path, 'manifest.json')
+                if os.path.exists(mpath):
+                    try:
+                        with open(mpath, 'r', encoding='utf-8') as fh:
+                            manifest = json.load(fh) or {}
+                    except Exception:
+                        manifest = {}
+                entries.append({'stamp': name, 'manifest': manifest})
+    except Exception:
+        entries = []
+
+    log = _load_backup_log()
+    return render_template('backups.html', backups=entries, backup_log=log, csrf_token=_get_or_create_csrf_token())
+
+
+@app.route('/admin/backups/download/<stamp>')
+def admin_backups_download(stamp: str):
+    if not session.get('user'):
+        return redirect(url_for('login', next=request.path))
+    if not has_permission('backup.manage'):
+        abort(403)
+    target = os.path.join(BACKUP_DIR, stamp)
+    if not os.path.isdir(target):
+        abort(404)
+    # Create zip in memory
+    bio = io.BytesIO()
+    try:
+        with zipfile.ZipFile(bio, 'w', zipfile.ZIP_DEFLATED) as zf:
+            for root, _, files in os.walk(target):
+                for fn in files:
+                    full = os.path.join(root, fn)
+                    arcname = os.path.relpath(full, target)
+                    zf.write(full, arcname)
+        bio.seek(0)
+        return send_file(bio, as_attachment=True, download_name=f'backup-{stamp}.zip')
+    except Exception:
+        abort(500)
+
+
+@app.route('/admin/backups/apply/<stamp>', methods=['POST'])
+@csrf_protect
+def admin_backups_apply(stamp: str):
+    if not session.get('user'):
+        return redirect(url_for('login', next=request.path))
+    if not has_permission('backup.manage'):
+        abort(403)
+    target = os.path.join(BACKUP_DIR, stamp)
+    if not os.path.isdir(target):
+        abort(404)
+
+    # Map backup basenames to current file paths
+    mapping = {
+        os.path.basename(FILE_ANGGOTA): FILE_ANGGOTA,
+        os.path.basename(FILE_SIMPANAN): FILE_SIMPANAN,
+        os.path.basename(FILE_SIMPANAN_TRANSAKSI): FILE_SIMPANAN_TRANSAKSI,
+        os.path.basename(FILE_SIMPANAN_PENGAJUAN): FILE_SIMPANAN_PENGAJUAN,
+        os.path.basename(FILE_IURAN_SOSIAL): FILE_IURAN_SOSIAL,
+        os.path.basename(FILE_PINJAMAN): FILE_PINJAMAN,
+        os.path.basename(FILE_PINJAMAN_CICILAN): FILE_PINJAMAN_CICILAN,
+        os.path.basename(FILE_USERS): FILE_USERS,
+        os.path.basename(FILE_PENDAFTARAN_ANGGOTA): FILE_PENDAFTARAN_ANGGOTA,
+        os.path.basename(FILE_IMPORT_LOG): FILE_IMPORT_LOG,
+        os.path.basename(FILE_BERITA): FILE_BERITA,
+    }
+
+    applied = []
+    try:
+        for fname in os.listdir(target):
+            if fname == 'manifest.json' or fname == 'backup_log.json':
+                continue
+            src = os.path.join(target, fname)
+            dest = mapping.get(fname)
+            if dest:
+                try:
+                    os.makedirs(os.path.dirname(dest), exist_ok=True)
+                    shutil.copy2(src, dest)
+                    applied.append(fname)
+                except Exception:
+                    pass
+        # record manual apply in backup log
+        entries = _load_backup_log()
+        entries.append({'type': 'manual', 'stamp': stamp, 'applied_by': session.get('user'), 'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'files': applied})
+        _save_backup_log(entries)
+        flash('Backup applied successfully (files overwritten).', 'success')
+    except Exception as e:
+        flash(f'Failed applying backup: {e}', 'danger')
+
+    return redirect(url_for('admin_backups'))
+
+
+# --- Admin: Roles Management (Tahap 2 feature)
+@app.route('/admin/roles')
+def admin_roles():
+    if not session.get('user'):
+        return redirect(url_for('login', next=request.path))
+    if not has_permission('roles.manage'):
+        abort(403)
+    
+    roles_list = []
+    if _is_db_mode_enabled():
+        roles_list = get_all_roles_from_db()
+    else:
+        # Fallback ke file-based ROLE_LABELS jika DB mode OFF
+        for role_name, label in ROLE_LABELS.items():
+            roles_list.append({
+                'id_role': role_name,
+                'role_name': role_name,
+                'deskripsi': f'Legacy role: {label}',
+                'created_at': None
+            })
+    
+    return render_template(
+        'admin_roles.html',
+        roles=roles_list,
+        _is_db_mode=_is_db_mode_enabled(),
+        csrf_token=_get_or_create_csrf_token()
+    )
+
+
+@app.route('/admin/roles/<role_name>/permissions')
+def admin_role_permissions(role_name: str):
+    if not session.get('user'):
+        return redirect(url_for('login', next=request.path))
+    if not has_permission('roles.manage'):
+        abort(403)
+    
+    if not _is_db_mode_enabled():
+        # Fallback ke file-based ROLE_PERMISSIONS
+        permissions = sorted(ROLE_PERMISSIONS.get(role_name, set()))
+        role_info = {'role_name': role_name, 'deskripsi': ROLE_LABELS.get(role_name, 'Unknown')}
+    else:
+        role_info = get_role_by_name_from_db(role_name)
+        if not role_info:
+            abort(404)
+        perms = get_permissions_for_role_from_db(role_name)
+        permissions = [p['permission_name'] for p in perms]
+    
+    return render_template(
+        'admin_role_permissions.html',
+        role_info=role_info,
+        permissions=permissions,
+        csrf_token=_get_or_create_csrf_token()
+    )
+
+
+# --- Admin: Permissions Audit (Tahap 2 feature, read-only)
+@app.route('/admin/permissions')
+def admin_permissions():
+    if not session.get('user'):
+        return redirect(url_for('login', next=request.path))
+    if not has_permission('audit.view'):
+        abort(403)
+    
+    all_perms = []
+    if _is_db_mode_enabled():
+        all_perms = get_all_permissions_from_db()
+    else:
+        # Fallback: collect semua permissions dari ROLE_PERMISSIONS
+        all_perm_set = set()
+        for role_perms in ROLE_PERMISSIONS.values():
+            all_perm_set.update(role_perms)
+        all_perms = [{'id_permission': p, 'permission_name': p} for p in sorted(all_perm_set)]
+    
+    return render_template(
+        'admin_permissions.html',
+        permissions=all_perms,
+        _is_db_mode=_is_db_mode_enabled()
+    )
 
 
 def _write_berita_items(items: list[dict]) -> None:
@@ -2387,14 +2573,171 @@ ROLE_PERMISSIONS = {
     },
 }
 
+# Cache untuk role/permission dari DB (Tahap 2: DB-backed RBAC)
+_ROLE_PERMISSIONS_CACHE = {}
+_ROLE_PERMISSIONS_CACHE_TIMESTAMP = 0
+
+
+def _get_role_permissions_from_db(role_name: str) -> set:
+    """Baca permission untuk role dari DB role_permissions table (Tahap 2 feature)."""
+    global _ROLE_PERMISSIONS_CACHE, _ROLE_PERMISSIONS_CACHE_TIMESTAMP
+    import time
+    
+    # Cache timeout: 5 menit
+    now = time.time()
+    if now - _ROLE_PERMISSIONS_CACHE_TIMESTAMP > 300:
+        _ROLE_PERMISSIONS_CACHE.clear()
+        _ROLE_PERMISSIONS_CACHE_TIMESTAMP = now
+    
+    if role_name in _ROLE_PERMISSIONS_CACHE:
+        return _ROLE_PERMISSIONS_CACHE[role_name]
+    
+    perms = set()
+    if not _is_db_mode_enabled():
+        return perms
+    
+    try:
+        with db_session() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT p.permission_name
+                    FROM role_permissions rp
+                    JOIN roles r ON rp.id_role = r.id_role
+                    JOIN permissions p ON rp.id_permission = p.id_permission
+                    WHERE LOWER(r.role_name) = LOWER(:role)
+                """),
+                {'role': role_name}
+            )
+            perms = {row[0] for row in result}
+    except Exception as e:
+        print(f"Error membaca role_permissions dari DB untuk role '{role_name}': {e}")
+    
+    _ROLE_PERMISSIONS_CACHE[role_name] = perms
+    return perms
+
 
 def _current_role() -> str:
     return (session.get('role') or '').strip().lower()
 
 
 def has_permission(permission: str, role: str | None = None) -> bool:
+    """
+    Cek apakah role memiliki permission.
+    
+    Strategi:
+    1. Jika DB mode ON, baca dari DB role_permissions (Tahap 2)
+    2. Jika DB mode OFF atau permission tidak ditemukan di DB, fallback ke ROLE_PERMISSIONS file-based
+    3. Ini memastikan backward compatibility dan smooth transition ke DB-backed RBAC
+    """
     role_name = (role or _current_role()).strip().lower()
+    
+    # Jika DB mode aktif, coba baca dari DB
+    if _is_db_mode_enabled():
+        db_perms = _get_role_permissions_from_db(role_name)
+        if db_perms:
+            return permission in db_perms
+    
+    # Fallback ke file-based ROLE_PERMISSIONS (legacy mode)
     return permission in ROLE_PERMISSIONS.get(role_name, set())
+
+
+def _invalidate_role_permissions_cache():
+    """Clear cache role_permissions dari DB (dipanggil saat ada perubahan role/permission)."""
+    global _ROLE_PERMISSIONS_CACHE, _ROLE_PERMISSIONS_CACHE_TIMESTAMP
+    _ROLE_PERMISSIONS_CACHE.clear()
+    _ROLE_PERMISSIONS_CACHE_TIMESTAMP = 0
+
+
+def get_all_roles_from_db() -> list:
+    """Baca semua roles dari DB (Tahap 2 feature)."""
+    if not _is_db_mode_enabled():
+        return []
+    try:
+        with db_session() as conn:
+            result = conn.execute(text("""
+                SELECT id_role, role_name, deskripsi, created_at 
+                FROM roles 
+                ORDER BY role_name
+            """))
+            return [
+                {
+                    'id_role': row[0],
+                    'role_name': row[1],
+                    'deskripsi': row[2],
+                    'created_at': row[3],
+                }
+                for row in result
+            ]
+    except Exception as e:
+        print(f"Error membaca roles dari DB: {e}")
+        return []
+
+
+def get_role_by_name_from_db(role_name: str) -> dict:
+    """Baca role by name dari DB."""
+    if not _is_db_mode_enabled():
+        return {}
+    try:
+        with db_session() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT id_role, role_name, deskripsi, created_at 
+                    FROM roles 
+                    WHERE LOWER(role_name) = LOWER(:role)
+                """),
+                {'role': role_name}
+            )
+            row = result.fetchone()
+            if row:
+                return {
+                    'id_role': row[0],
+                    'role_name': row[1],
+                    'deskripsi': row[2],
+                    'created_at': row[3],
+                }
+    except Exception as e:
+        print(f"Error membaca role '{role_name}' dari DB: {e}")
+    return {}
+
+
+def get_permissions_for_role_from_db(role_name: str) -> list:
+    """Baca list permissions untuk role dari DB (detailed, bukan set)."""
+    if not _is_db_mode_enabled():
+        return []
+    try:
+        with db_session() as conn:
+            result = conn.execute(
+                text("""
+                    SELECT p.id_permission, p.permission_name
+                    FROM role_permissions rp
+                    JOIN roles r ON rp.id_role = r.id_role
+                    JOIN permissions p ON rp.id_permission = p.id_permission
+                    WHERE LOWER(r.role_name) = LOWER(:role)
+                    ORDER BY p.permission_name
+                """),
+                {'role': role_name}
+            )
+            return [{'id_permission': row[0], 'permission_name': row[1]} for row in result]
+    except Exception as e:
+        print(f"Error membaca permissions untuk role '{role_name}': {e}")
+        return []
+
+
+def get_all_permissions_from_db() -> list:
+    """Baca semua permissions dari DB."""
+    if not _is_db_mode_enabled():
+        return []
+    try:
+        with db_session() as conn:
+            result = conn.execute(text("""
+                SELECT id_permission, permission_name
+                FROM permissions
+                ORDER BY permission_name
+            """))
+            return [{'id_permission': row[0], 'permission_name': row[1]} for row in result]
+    except Exception as e:
+        print(f"Error membaca permissions dari DB: {e}")
+        return []
 
 
 def permission_required(*permissions: str):
@@ -2475,6 +2818,7 @@ def _backup_legacy_data() -> None:
         copied.append(os.path.basename(source))
     with open(os.path.join(target_dir, 'manifest.json'), 'w', encoding='utf-8') as fh:
         json.dump({'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'), 'files': copied}, fh, ensure_ascii=False, indent=2)
+    return stamp
 
 
 def _maybe_run_daily_backup() -> None:
@@ -2483,10 +2827,70 @@ def _maybe_run_daily_backup() -> None:
     if _LAST_AUTO_BACKUP_DATE == today:
         return
     try:
-        _backup_legacy_data()
+        stamp = _backup_legacy_data()
         _LAST_AUTO_BACKUP_DATE = today
+        try:
+            _record_auto_backup_if_weekly(stamp)
+        except Exception:
+            # non-fatal: logging of auto-backup should not break request
+            pass
     except Exception as exc:
         print(f'Error auto backup data: {exc}')
+
+
+def _backup_log_path() -> str:
+    os.makedirs(BACKUP_DIR, exist_ok=True)
+    return os.path.join(BACKUP_DIR, 'backup_log.json')
+
+
+def _load_backup_log() -> list:
+    path = _backup_log_path()
+    if not os.path.exists(path):
+        return []
+    try:
+        with open(path, 'r', encoding='utf-8') as fh:
+            data = json.load(fh)
+            if isinstance(data, list):
+                return data
+    except Exception:
+        pass
+    return []
+
+
+def _save_backup_log(entries: list) -> None:
+    path = _backup_log_path()
+    try:
+        with open(path, 'w', encoding='utf-8') as fh:
+            json.dump(entries, fh, ensure_ascii=False, indent=2)
+    except Exception:
+        pass
+
+
+def _record_auto_backup_if_weekly(stamp: str) -> None:
+    """Record an automatic backup log only once per 7 days; remove previous auto entries."""
+    entries = _load_backup_log()
+    now = datetime.now()
+    last_auto = None
+    for e in reversed(entries):
+        if e.get('type') == 'auto':
+            last_auto = e
+            break
+    do_append = False
+    if not last_auto:
+        do_append = True
+    else:
+        try:
+            last_dt = datetime.strptime(last_auto.get('created_at', '') or '', '%Y-%m-%d %H:%M:%S')
+            if (now - last_dt).days >= 7:
+                do_append = True
+        except Exception:
+            do_append = True
+
+    if do_append:
+        # remove previous auto entries
+        entries = [e for e in entries if e.get('type') != 'auto']
+        entries.append({'type': 'auto', 'stamp': stamp, 'created_at': now.strftime('%Y-%m-%d %H:%M:%S')})
+        _save_backup_log(entries)
 
 
 @app.after_request
@@ -2549,15 +2953,25 @@ def _build_admin_pengajuan_notifications(limit: int = 8):
 @app.context_processor
 def inject_globals():
     notif_pengajuan_items, notif_pengajuan_count = _build_admin_pengajuan_notifications()
+    current_role = (session.get('role') or '').strip().lower()
+    
+    # Ambil current permissions (dari DB jika aktif, otherwise fallback ke file-based)
+    if _is_db_mode_enabled() and current_role:
+        current_perms = list(_get_role_permissions_from_db(current_role))
+    else:
+        current_perms = list(ROLE_PERMISSIONS.get(current_role, set()))
+    
     return {
         'now': datetime.now().strftime('%d %B %Y'),
         'current_user': session.get('user'),
-        'current_role': session.get('role'),
+        'current_role': current_role,
         'is_admin': is_current_user_admin(),
         'current_id_anggota': get_current_user_id_anggota(),
         'csrf_token': _get_or_create_csrf_token(),
         'notif_pengajuan_items': notif_pengajuan_items,
         'notif_pengajuan_count': notif_pengajuan_count,
+        'current_permissions': sorted(current_perms),
+        'role_labels': ROLE_LABELS,
     }
 
 
@@ -2751,7 +3165,23 @@ def users_index():
     anggota = baca_csv(FILE_ANGGOTA)
     anggota_map = {a.get('id_anggota'): a for a in anggota}
     users.sort(key=lambda u: ((u.get('role') or '') not in ADMIN_PANEL_ROLES, (u.get('username') or '').lower()))
-    return render_template('users.html', users=users, anggota=anggota, anggota_map=anggota_map, role_options=ROLE_OPTIONS, role_labels=ROLE_LABELS)
+    
+    # Jika DB mode aktif, ambil role options dari DB
+    role_options = ROLE_OPTIONS
+    if _is_db_mode_enabled():
+        db_roles = get_all_roles_from_db()
+        if db_roles:
+            role_options = [(r['role_name'], r['role_name'].replace('_', ' ').title()) for r in db_roles]
+    
+    return render_template(
+        'users.html',
+        users=users,
+        anggota=anggota,
+        anggota_map=anggota_map,
+        role_options=role_options,
+        role_labels=ROLE_LABELS,
+        _is_db_mode=_is_db_mode_enabled()
+    )
 
 
 @app.route('/users/tambah', methods=['POST'])

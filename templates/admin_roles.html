@@ -1,0 +1,89 @@
+{% extends 'base.html' %}
+
+{% block title %}Manajemen Roles - Koperasi Indonesia{% endblock %}
+
+{% block content %}
+<div class="card">
+  <div class="card-header">
+    <strong>Manajemen Roles (Role-Based Access Control)</strong>
+  </div>
+  <div class="card-body">
+    <p class="small text-muted">
+      Halaman ini menampilkan daftar role dan permission yang terdefinisi di sistem.
+      {% if _is_db_mode %}
+        Saat ini menggunakan <strong>mode database</strong> (PostgreSQL).
+      {% else %}
+        Saat ini menggunakan <strong>mode legacy file-based</strong>. Untuk mengaktifkan DB mode, set DATABASE_URL di environment.
+      {% endif %}
+    </p>
+
+    <h6 class="mt-4">Daftar Role</h6>
+    {% if roles %}
+      <div class="table-responsive">
+        <table class="table table-sm table-hover">
+          <thead class="table-light">
+            <tr>
+              <th>Role Name</th>
+              <th>Deskripsi</th>
+              <th>Dibuat</th>
+              <th>Aksi</th>
+            </tr>
+          </thead>
+          <tbody>
+            {% for role in roles %}
+            <tr>
+              <td><strong>{{ role.role_name }}</strong></td>
+              <td>{{ role.deskripsi or '-' }}</td>
+              <td>
+                {% if role.created_at %}
+                  <small class="text-muted">{{ role.created_at }}</small>
+                {% else %}
+                  <small class="text-muted">-</small>
+                {% endif %}
+              </td>
+              <td>
+                <a href="{{ url_for('admin_role_permissions', role_name=role.role_name) }}" class="btn btn-sm btn-info">
+                  <i class="fas fa-eye"></i> Permissions
+                </a>
+              </td>
+            </tr>
+            {% endfor %}
+          </tbody>
+        </table>
+      </div>
+    {% else %}
+      <div class="alert alert-warning">Tidak ada roles ditemukan. Jalankan migration script untuk populate roles.</div>
+    {% endif %}
+
+    <hr class="my-4">
+
+    <h6>Informasi Mode</h6>
+    <div class="alert alert-info">
+      <strong>Mode Saat Ini:</strong>
+      {% if _is_db_mode %}
+        <strong>Database PostgreSQL</strong> - Role dan permission dibaca dari tabel <code>roles</code>, <code>permissions</code>, dan <code>role_permissions</code>.
+      {% else %}
+        <strong>Legacy File-Based</strong> - Role dan permission dibaca dari file <code>app_system.py</code>.
+      {% endif %}
+    </div>
+
+    <h6>Cara Menambah Role Baru (DB Mode)</h6>
+    <ol class="small">
+      <li>Login ke PostgreSQL console</li>
+      <li>Insert ke tabel roles:
+        <pre><code>INSERT INTO roles (id_role, role_name, deskripsi) 
+VALUES (gen_random_uuid(), 'nama_role', 'Deskripsi role');</code></pre>
+      </li>
+      <li>Mapping permission ke role:
+        <pre><code>INSERT INTO role_permissions (id_role, id_permission) 
+SELECT r.id_role, p.id_permission 
+FROM roles r, permissions p 
+WHERE r.role_name = 'nama_role' 
+AND p.permission_name IN ('permission1', 'permission2');</code></pre>
+      </li>
+      <li>Refresh halaman ini untuk melihat role baru</li>
+    </ol>
+
+  </div>
+</div>
+{% endblock %}
