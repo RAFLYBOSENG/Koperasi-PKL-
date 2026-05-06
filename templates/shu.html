@@ -1,0 +1,235 @@
+{% extends "base.html" %}
+
+{% block title %}SHU - Koperasi Indonesia{% endblock %}
+
+{% block content %}
+<div class="row g-3 mb-4">
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <div class="text-muted small">Total SHU</div>
+                <div class="fs-4 fw-bold text-primary">{{ format_currency(summary.total_shu) }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <div class="text-muted small">SHU Pasif Total</div>
+                <div class="fs-4 fw-bold text-success">{{ format_currency(summary.shu_pasif_total) }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <div class="text-muted small">SHU Aktif Total</div>
+                <div class="fs-4 fw-bold text-warning">{{ format_currency(summary.shu_aktif_total) }}</div>
+            </div>
+        </div>
+    </div>
+    <div class="col-md-3">
+        <div class="card shadow-sm h-100">
+            <div class="card-body">
+                <div class="text-muted small">Periode Tersimpan</div>
+                <div class="fs-4 fw-bold text-dark">{{ summary.jumlah_periode }}</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+{% if can_manage %}
+<div class="card shadow-sm mb-4">
+    <div class="card-header bg-white d-flex justify-content-between align-items-center">
+        <strong>Hitung & Simpan SHU Tahunan</strong>
+        <span class="badge bg-info text-dark">Super Admin / Bendahara</span>
+    </div>
+    <div class="card-body">
+        <form method="post" action="{{ url_for('simpan_shu') }}" class="row g-3">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+            <div class="col-md-3">
+                <label class="form-label">Tahun Buku</label>
+                <input type="number" name="tahun" class="form-control" value="{{ selected_record.tahun if selected_record else now[:4] }}" required>
+            </div>
+            <div class="col-md-5">
+                <label class="form-label">Total SHU</label>
+                <input type="number" name="total_shu" class="form-control" min="0" step="1" placeholder="Kosongkan/0 untuk otomatis dari provisi pinjaman">
+            </div>
+            <div class="col-md-4">
+                <label class="form-label">Catatan</label>
+                <input type="text" name="catatan" class="form-control" placeholder="Opsional">
+            </div>
+            <div class="col-12">
+                <button type="submit" name="mode" value="manual" class="btn btn-primary"><i class="fas fa-calculator me-1"></i>Hitung & Simpan</button>
+                <button type="submit" name="mode" value="auto_provisi" class="btn btn-outline-success ms-2"><i class="fas fa-wand-magic-sparkles me-1"></i>Hitung Otomatis dari Provisi</button>
+            </div>
+        </form>
+    </div>
+</div>
+{% endif %}
+
+<div class="row g-3">
+    <div class="col-lg-4">
+        <div class="card shadow-sm h-100">
+            <div class="card-header bg-white"><strong>Daftar Periode SHU</strong></div>
+            <div class="list-group list-group-flush">
+                {% for record in records %}
+                <a href="{{ url_for('halaman_shu', id_shu=record.id_shu) }}" class="list-group-item list-group-item-action {% if selected_record and record.id_shu == selected_record.id_shu %}active{% endif %}">
+                    <div class="d-flex justify-content-between align-items-center">
+                        <div>
+                            <div class="fw-semibold">Tahun {{ record.tahun }}</div>
+                            <div class="small opacity-75">{{ format_currency(record.total_shu) }}</div>
+                        </div>
+                        <span class="badge bg-{{ 'success' if record.status == 'Disetujui' else 'secondary' }}">{{ record.status }}</span>
+                    </div>
+                </a>
+                {% else %}
+                <div class="list-group-item text-muted">Belum ada data SHU.</div>
+                {% endfor %}
+            </div>
+        </div>
+    </div>
+
+    <div class="col-lg-8">
+        <div class="card shadow-sm mb-4">
+            <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                <strong>Detail SHU</strong>
+                {% if selected_record %}
+                <div class="d-flex gap-2">
+                    {% if can_validate and selected_record.status != 'Disetujui' %}
+                    <form method="post" action="{{ url_for('konfirmasi_shu', id_shu=selected_record.id_shu) }}">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn btn-sm btn-success">Konfirmasi</button>
+                    </form>
+                    {% endif %}
+                    {% if can_manage %}
+                    <form method="post" action="{{ url_for('hapus_shu', id_shu=selected_record.id_shu) }}" onsubmit="return confirm('Hapus data SHU ini?');">
+                        <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                        <button type="submit" class="btn btn-sm btn-outline-danger">Hapus</button>
+                    </form>
+                    {% endif %}
+                </div>
+                {% endif %}
+            </div>
+            <div class="card-body">
+                {% if selected_record %}
+                <div class="row g-3 mb-3">
+                    <div class="col-md-4"><div class="border rounded p-3"><small class="text-muted d-block">Tahun</small><strong>{{ selected_record.tahun }}</strong></div></div>
+                    <div class="col-md-4"><div class="border rounded p-3"><small class="text-muted d-block">Total SHU</small><strong>{{ format_currency(selected_record.total_shu) }}</strong></div></div>
+                    <div class="col-md-4"><div class="border rounded p-3"><small class="text-muted d-block">Status</small><strong>{{ selected_record.status }}</strong></div></div>
+                </div>
+
+                <div class="table-responsive mb-4">
+                    <table class="table table-sm align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Komponen</th>
+                                <th class="text-end">Nominal</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr><td>Cadangan Umum</td><td class="text-end">{{ format_currency(selected_record.cadangan_umum) }}</td></tr>
+                            <tr><td>SHU Pasif Total</td><td class="text-end">{{ format_currency(selected_record.shu_pasif_total) }}</td></tr>
+                            <tr><td>SHU Aktif Total</td><td class="text-end">{{ format_currency(selected_record.shu_aktif_total) }}</td></tr>
+                            <tr><td>Dana Kesejahteraan</td><td class="text-end">{{ format_currency(selected_record.dana_kesejahteraan) }}</td></tr>
+                            <tr><td>Dana Pendidikan</td><td class="text-end">{{ format_currency(selected_record.dana_pendidikan) }}</td></tr>
+                            <tr><td>Dana Sosial</td><td class="text-end">{{ format_currency(selected_record.dana_sosial) }}</td></tr>
+                            <tr><td>Dana Pembangunan</td><td class="text-end">{{ format_currency(selected_record.dana_pembangunan) }}</td></tr>
+                            <tr><td>Dana Pengurus</td><td class="text-end">{{ format_currency(selected_record.dana_pengurus) }}</td></tr>
+                            <tr><td>Dana Risiko</td><td class="text-end">{{ format_currency(selected_record.dana_risiko) }}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <h6 class="mb-3">Catatan Perhitungan</h6>
+                <div class="alert alert-light border small">
+                    {{ selected_record.catatan or '-' }}
+                </div>
+
+                <h6 class="mb-3">Rincian Pinjaman Sumber SHU (Audit)</h6>
+                <div class="d-flex justify-content-between align-items-center mb-2">
+                    <small class="text-muted">Tahun {{ provisi_summary.tahun }} | {{ provisi_summary.jumlah_pinjaman }} pinjaman | Total provisi: {{ format_currency(provisi_summary.total_provisi) }}</small>
+                </div>
+                <div class="table-responsive mb-4">
+                    <table class="table table-bordered table-sm align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Tanggal</th>
+                                <th>No Anggota</th>
+                                <th>Nama</th>
+                                <th>Jenis</th>
+                                <th class="text-end">Plafon</th>
+                                <th class="text-end">Tenor</th>
+                                <th class="text-end">Provisi %</th>
+                                <th class="text-end">Provisi</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in provisi_details %}
+                            <tr>
+                                <td>{{ row.tanggal_pengajuan }}</td>
+                                <td>{{ row.no_anggota }}</td>
+                                <td>{{ row.nama_anggota }}</td>
+                                <td>{{ row.jenis_pinjaman }}</td>
+                                <td class="text-end">{{ format_currency(row.plafon) }}</td>
+                                <td class="text-end">{{ row.tenor_bulan }}</td>
+                                <td class="text-end">{{ "%.2f"|format(row.provisi_persen) }}</td>
+                                <td class="text-end fw-semibold">{{ format_currency(row.provisi_nominal) }}</td>
+                                <td>{{ row.status }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="9" class="text-center text-muted">Belum ada pinjaman berprovisi pada tahun ini.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+
+                <h6 class="mb-3">Alokasi per Anggota</h6>
+                <div class="table-responsive">
+                    <table class="table table-bordered table-sm align-middle">
+                        <thead class="table-light">
+                            <tr>
+                                <th>No Anggota</th>
+                                <th>Nama</th>
+                                <th class="text-end">Jasa Anggota</th>
+                                <th class="text-end">SHU Pasif</th>
+                                <th class="text-end">SHU Aktif</th>
+                                <th class="text-end">Total SHU</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for row in selected_allocation %}
+                            <tr>
+                                <td>{{ row.no_anggota }}</td>
+                                <td>{{ row.nama_anggota }}</td>
+                                <td class="text-end">{{ format_currency(row.jasa_anggota) }}</td>
+                                <td class="text-end">{{ format_currency(row.shu_pasif) }}</td>
+                                <td class="text-end">{{ format_currency(row.shu_aktif) }}</td>
+                                <td class="text-end fw-semibold">{{ format_currency(row.total_shu) }}</td>
+                            </tr>
+                            {% else %}
+                            <tr><td colspan="6" class="text-center text-muted">Belum ada alokasi SHU untuk periode ini.</td></tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="text-muted">Belum ada data SHU tersimpan.</div>
+                {% endif %}
+            </div>
+        </div>
+
+        {% if my_allocation %}
+        <div class="card shadow-sm">
+            <div class="card-header bg-white"><strong>SHU Saya</strong></div>
+            <div class="card-body row g-3">
+                <div class="col-md-4"><div class="border rounded p-3"><small class="text-muted d-block">SHU Pasif</small><strong>{{ format_currency(my_allocation.shu_pasif) }}</strong></div></div>
+                <div class="col-md-4"><div class="border rounded p-3"><small class="text-muted d-block">SHU Aktif</small><strong>{{ format_currency(my_allocation.shu_aktif) }}</strong></div></div>
+                <div class="col-md-4"><div class="border rounded p-3"><small class="text-muted d-block">Total SHU</small><strong>{{ format_currency(my_allocation.total_shu) }}</strong></div></div>
+            </div>
+        </div>
+        {% endif %}
+    </div>
+</div>
+{% endblock %}

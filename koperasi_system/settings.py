@@ -22,6 +22,8 @@ FILE_USERS = os.path.join(DATA_DIR, 'users.xlsx')
 FILE_PENDAFTARAN_ANGGOTA = os.path.join(DATA_DIR, 'pendaftaran_anggota.xlsx')
 FILE_IMPORT_LOG = os.path.join(DATA_DIR, 'import_log.xlsx')
 FILE_BERITA = os.path.join(DATA_DIR, 'berita.json')
+FILE_SHU_TAHUNAN = os.path.join(DATA_DIR, 'shu_tahunan.xlsx')
+FILE_SHU_ALOKASI = os.path.join(DATA_DIR, 'shu_alokasi.xlsx')
 IMPORT_PREVIEW_DIR = os.path.join(DATA_DIR, 'import_preview')
 BACKUP_DIR = os.path.join(DATA_DIR, 'backup')
 
@@ -74,6 +76,20 @@ SIMPANAN_PENGAJUAN_FIELDNAMES = [
 IURAN_SOSIAL_FIELDNAMES = [
     'id_iuran', 'id_anggota', 'no_anggota', 'nama_anggota',
     'tanggal', 'jumlah', 'keterangan', 'diajukan_oleh',
+]
+
+SHU_TAHUNAN_FIELDNAMES = [
+    'id_shu', 'tahun', 'tanggal_input', 'total_shu', 'cadangan_umum',
+    'shu_pasif_total', 'shu_aktif_total', 'dana_kesejahteraan',
+    'dana_pendidikan', 'dana_sosial', 'dana_pembangunan', 'dana_pengurus',
+    'dana_risiko', 'status', 'dikonfirmasi_oleh', 'tanggal_konfirmasi',
+    'catatan',
+]
+
+SHU_ALOKASI_FIELDNAMES = [
+    'id_alokasi', 'id_shu', 'id_anggota', 'no_anggota', 'nama_anggota',
+    'jasa_anggota', 'nilai_jasa', 'shu_pasif', 'shu_aktif', 'total_shu',
+    'status', 'keterangan',
 ]
 
 PINJAMAN_FIELDNAMES = [

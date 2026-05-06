@@ -58,6 +58,11 @@
                     <a href="/pinjaman"><i class="fas fa-hand-holding-dollar me-2"></i>Pinjaman</a>
                 </li>
                 {% endif %}
+                {% if 'shu.self.view' in current_permissions or 'shu.view' in current_permissions %}
+                <li class="{% if '/shu' in request.path %}active{% endif %}">
+                    <a href="/shu"><i class="fas fa-coins me-2"></i>SHU</a>
+                </li>
+                {% endif %}
                 {% if 'reports.self.view' in current_permissions or 'reports.strategic.view' in current_permissions %}
                 <li class="{% if '/laporan' in request.path %}active{% endif %}">
                     <a href="/laporan"><i class="fas fa-chart-line me-2"></i>Laporan</a>
@@ -103,6 +108,7 @@
                         {% elif '/anggota' in request.path %} Data Anggota
                         {% elif '/simpanan' in request.path %} Simpanan
                         {% elif '/pinjaman' in request.path %} Pinjaman
+                        {% elif '/shu' in request.path %} SHU
                         {% elif '/laporan' in request.path %} Laporan
                         {% elif '/admin/berita' in request.path or '/berita-admin' in request.path %} Kelola Berita
                         {% elif '/users' in request.path %} Manajemen User

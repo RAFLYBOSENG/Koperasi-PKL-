@@ -13,9 +13,32 @@ import os
 import sys
 import uuid
 from datetime import datetime
+from pathlib import Path
 
 # Setup path untuk import koperasi_system
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+
+def _load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+    try:
+        for raw_line in path.read_text(encoding='utf-8').splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, value = line.split('=', 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except Exception:
+        pass
+
+
+_load_env_file(ROOT_DIR / '.env')
 
 from koperasi_system.db import db_session
 from sqlalchemy import text

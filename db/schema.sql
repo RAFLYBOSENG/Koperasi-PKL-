@@ -251,10 +251,21 @@ CREATE TABLE IF NOT EXISTS kas_koperasi (
 CREATE TABLE IF NOT EXISTS shu_tahunan (
     id_shu TEXT PRIMARY KEY,
     tahun INTEGER NOT NULL UNIQUE,
+    tanggal_input TIMESTAMP DEFAULT NOW(),
     total_shu NUMERIC(18,2),
+    cadangan_umum NUMERIC(18,2),
+    shu_pasif_total NUMERIC(18,2),
+    shu_aktif_total NUMERIC(18,2),
+    dana_kesejahteraan NUMERIC(18,2),
+    dana_pendidikan NUMERIC(18,2),
+    dana_sosial NUMERIC(18,2),
+    dana_pembangunan NUMERIC(18,2),
+    dana_pengurus NUMERIC(18,2),
+    dana_risiko NUMERIC(18,2),
     status TEXT DEFAULT 'Draft',
     dikonfirmasi_oleh TEXT,
     tanggal_konfirmasi TIMESTAMP,
+    catatan TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
 );
@@ -276,15 +287,44 @@ CREATE TABLE IF NOT EXISTS shu_anggota (
     id_shu_anggota TEXT PRIMARY KEY,
     id_shu TEXT NOT NULL,
     id_anggota TEXT NOT NULL,
+    no_anggota TEXT,
+    nama_anggota TEXT,
+    jasa_anggota NUMERIC(18,2),
+    nilai_jasa NUMERIC(18,2),
     shu_pasif NUMERIC(18,2),
     shu_aktif NUMERIC(18,2),
     shu_total NUMERIC(18,2),
     status_ambil TEXT DEFAULT 'Belum Diambil',
     tanggal_ambil TIMESTAMP,
+    catatan TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
     CONSTRAINT fk_shu_anggota_shu FOREIGN KEY (id_shu) REFERENCES shu_tahunan (id_shu) ON DELETE CASCADE,
     CONSTRAINT fk_shu_anggota_anggota FOREIGN KEY (id_anggota) REFERENCES anggota (id_anggota) ON DELETE CASCADE
 );
+
+ALTER TABLE IF EXISTS shu_tahunan
+    ADD COLUMN IF NOT EXISTS tanggal_input TIMESTAMP DEFAULT NOW(),
+    ADD COLUMN IF NOT EXISTS cadangan_umum NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS shu_pasif_total NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS shu_aktif_total NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS dana_kesejahteraan NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS dana_pendidikan NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS dana_sosial NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS dana_pembangunan NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS dana_pengurus NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS dana_risiko NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS catatan TEXT;
+
+ALTER TABLE IF EXISTS shu_anggota
+    ADD COLUMN IF NOT EXISTS no_anggota TEXT,
+    ADD COLUMN IF NOT EXISTS nama_anggota TEXT,
+    ADD COLUMN IF NOT EXISTS jasa_anggota NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS nilai_jasa NUMERIC(18,2),
+    ADD COLUMN IF NOT EXISTS catatan TEXT;
+
+CREATE INDEX IF NOT EXISTS idx_shu_tahunan_tahun ON shu_tahunan (tahun);
+CREATE INDEX IF NOT EXISTS idx_shu_alokasi_id_shu ON shu_alokasi (id_shu);
+CREATE INDEX IF NOT EXISTS idx_shu_anggota_id_shu_anggota ON shu_anggota (id_shu, id_anggota);
 
 -- Notifikasi
 CREATE TABLE IF NOT EXISTS notifikasi (

@@ -27,7 +27,7 @@ def get_engine() -> Engine:
     global _engine
     if _engine is None:
         if not DATABASE_URL:
-            raise RuntimeError("DATABASE_URL belum diatur.")
+            raise RuntimeError("postgresql://neondb_owner:npg_sjeEU6b5cfHh@ep-late-paper-amohg8m3-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require.")
         _engine = create_engine(
             DATABASE_URL,
             pool_size=DB_POOL_SIZE,

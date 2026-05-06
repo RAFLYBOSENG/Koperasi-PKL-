@@ -1,6 +1,32 @@
 import json
+import os
+import sys
 from datetime import datetime
 from pathlib import Path
+
+ROOT_DIR = Path(__file__).resolve().parents[1]
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
+
+def _load_env_file(path: Path) -> None:
+    if not path.exists():
+        return
+    try:
+        for raw_line in path.read_text(encoding='utf-8').splitlines():
+            line = raw_line.strip()
+            if not line or line.startswith('#') or '=' not in line:
+                continue
+            key, value = line.split('=', 1)
+            key = key.strip()
+            value = value.strip().strip('"').strip("'")
+            if key and key not in os.environ:
+                os.environ[key] = value
+    except Exception:
+        pass
+
+
+_load_env_file(ROOT_DIR / '.env')
 
 from openpyxl import load_workbook
 from sqlalchemy import text
@@ -30,6 +56,16 @@ from koperasi_system.settings import (
 )
 
 SCHEMA_PATH = Path(BASE_DIR) / "db" / "schema.sql"
+BLUEPRINT_USER_ROLES = [
+    'super_admin',
+    'admin_koperasi',
+    'bendahara',
+    'ketua_pengurus',
+    'anggota',
+    'auditor',
+    'admin',
+    'user',
+]
 
 
 def read_rows(filepath: str):
@@ -96,6 +132,12 @@ def import_table(conn, table_name: str, rows: list, fieldnames: list):
     return count
 
 
+def ensure_users_role_constraint(conn) -> None:
+    role_list_sql = ", ".join(f"'{role}'" for role in BLUEPRINT_USER_ROLES)
+    conn.execute(text("ALTER TABLE users DROP CONSTRAINT IF EXISTS users_role_check"))
+    conn.execute(text(f"ALTER TABLE users ADD CONSTRAINT users_role_check CHECK (role IN ({role_list_sql}))"))
+
+
 def main():
     if not ping_database():
         raise RuntimeError("DATABASE_URL belum valid atau database Neon tidak dapat diakses.")
@@ -103,6 +145,8 @@ def main():
     init_db_schema(str(SCHEMA_PATH))
 
     with db_session() as conn:
+        ensure_users_role_constraint(conn)
+
         # urutan penting karena foreign key
         users = read_rows(FILE_USERS)
         anggota = read_rows(FILE_ANGGOTA)

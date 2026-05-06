@@ -39,6 +39,8 @@ from koperasi_system.settings import (
     FILE_PENDAFTARAN_ANGGOTA,
     FILE_IMPORT_LOG,
     FILE_BERITA,
+    FILE_SHU_TAHUNAN,
+    FILE_SHU_ALOKASI,
     BACKUP_DIR,
     DSR_DEFAULT,
     PROVISI_RATE_LONG_TENOR,
@@ -53,6 +55,8 @@ from koperasi_system.settings import (
     SIMPANAN_TRANSAKSI_FIELDNAMES,
     SIMPANAN_PENGAJUAN_FIELDNAMES,
     IURAN_SOSIAL_FIELDNAMES,
+    SHU_TAHUNAN_FIELDNAMES,
+    SHU_ALOKASI_FIELDNAMES,
     PINJAMAN_FIELDNAMES,
     JENIS_IMPORT_CSV,
     IMPORT_PREVIEW_DIR,
@@ -6098,6 +6102,614 @@ def hitung_shu_pinjaman() -> dict:
     }
 
 
+def ensure_shu_schema():
+    for path, fieldnames in (
+        (FILE_SHU_TAHUNAN, SHU_TAHUNAN_FIELDNAMES),
+        (FILE_SHU_ALOKASI, SHU_ALOKASI_FIELDNAMES),
+    ):
+        if os.path.exists(path):
+            continue
+        try:
+            tulis_csv(path, [], fieldnames)
+        except Exception:
+            pass
+
+
+def _parse_float(value, default: float = 0.0) -> float:
+    try:
+        if value is None:
+            return float(default)
+        text_value = str(value).strip().replace(',', '')
+        if not text_value:
+            return float(default)
+        return float(text_value)
+    except Exception:
+        return float(default)
+
+
+def _extract_year(value: str) -> str:
+    raw = (value or '').strip()
+    if not raw:
+        return ''
+    return raw[:4] if len(raw) >= 4 else ''
+
+
+def _hitung_pendapatan_provisi_tahun(tahun: str) -> dict:
+    target_tahun = (tahun or '').strip()
+    rows = baca_csv(FILE_PINJAMAN)
+    total_provisi = 0.0
+    total_pinjaman_disetujui = 0
+    anggota_provisi = {}
+
+    for row in rows:
+        status = (row.get('status') or '').strip().lower()
+        if status not in {'disetujui', 'lunas'}:
+            continue
+        tahun_row = _extract_year(row.get('tanggal_pengajuan') or '')
+        if target_tahun and tahun_row and tahun_row != target_tahun:
+            continue
+
+        jenis = (row.get('jenis_pinjaman') or '').strip()
+        plafon = _parse_float(row.get('plafon'))
+        tenor = int(_parse_float(row.get('tenor_bulan')))
+        id_anggota = (row.get('id_anggota') or '').strip()
+
+        provisi = _parse_float(row.get('provisi_nominal'))
+        if provisi <= 0:
+            provisi = provisi_nominal_pinjaman(jenis, plafon, tenor)
+        if provisi <= 0:
+            continue
+
+        total_pinjaman_disetujui += 1
+        total_provisi += provisi
+        if id_anggota:
+            anggota_provisi[id_anggota] = anggota_provisi.get(id_anggota, 0.0) + provisi
+
+    return {
+        'tahun': target_tahun,
+        'total_provisi': total_provisi,
+        'total_pinjaman_disetujui': total_pinjaman_disetujui,
+        'anggota_provisi': anggota_provisi,
+    }
+
+
+def _rincian_pinjaman_sumber_shu(tahun: str) -> list[dict]:
+    target_tahun = (tahun or '').strip()
+    rows = baca_csv(FILE_PINJAMAN)
+    detail = []
+
+    for row in rows:
+        status = (row.get('status') or '').strip().lower()
+        if status not in {'disetujui', 'lunas'}:
+            continue
+        tahun_row = _extract_year(row.get('tanggal_pengajuan') or '')
+        if target_tahun and tahun_row and tahun_row != target_tahun:
+            continue
+
+        jenis = (row.get('jenis_pinjaman') or '').strip()
+        plafon = _parse_float(row.get('plafon'))
+        tenor = int(_parse_float(row.get('tenor_bulan')))
+        provisi_persen = provisi_persen_dari_pinjaman(jenis, tenor)
+        provisi = _parse_float(row.get('provisi_nominal'))
+        if provisi <= 0:
+            provisi = provisi_nominal_pinjaman(jenis, plafon, tenor)
+        if provisi <= 0:
+            continue
+
+        detail.append({
+            'id_pinjaman': row.get('id_pinjaman', ''),
+            'tanggal_pengajuan': row.get('tanggal_pengajuan', ''),
+            'id_anggota': row.get('id_anggota', ''),
+            'no_anggota': row.get('no_anggota', ''),
+            'nama_anggota': row.get('nama_anggota', ''),
+            'jenis_pinjaman': jenis,
+            'plafon': plafon,
+            'tenor_bulan': tenor,
+            'provisi_persen': provisi_persen,
+            'provisi_nominal': provisi,
+            'status': row.get('status', ''),
+        })
+
+    detail.sort(key=lambda x: (x.get('tanggal_pengajuan') or '', x.get('id_pinjaman') or ''), reverse=True)
+    return detail
+
+
+def _hitung_jasa_anggota_shu(tahun: str) -> tuple[list[dict], dict]:
+    anggota_rows = [a for a in baca_csv(FILE_ANGGOTA) if (a.get('id_anggota') or '').strip()]
+    provisi_ctx = _hitung_pendapatan_provisi_tahun(tahun)
+    provisi_map = provisi_ctx.get('anggota_provisi', {})
+
+    hasil = []
+    for anggota in anggota_rows:
+        status_anggota = (anggota.get('status_anggota') or 'Aktif').strip().lower()
+        if status_anggota and status_anggota not in {'aktif', 'active'}:
+            continue
+        id_anggota = (anggota.get('id_anggota') or '').strip()
+        nilai_provisi = _parse_float(provisi_map.get(id_anggota, 0.0))
+        hasil.append({
+            'id_anggota': id_anggota,
+            'no_anggota': anggota.get('no_anggota', ''),
+            'nama_anggota': anggota.get('nama', ''),
+            'pendapatan_provisi': nilai_provisi,
+            'jasa_anggota': nilai_provisi,
+        })
+    return hasil, provisi_ctx
+
+
+def hitung_shu_tahunan(total_shu: float, tahun: str, catatan: str = '') -> dict:
+    tahun = (tahun or str(datetime.now().year)).strip()
+    anggota_jasa, provisi_ctx = _hitung_jasa_anggota_shu(tahun)
+    total_shu_input = max(_parse_float(total_shu), 0.0)
+    total_shu = total_shu_input if total_shu_input > 0 else max(_parse_float(provisi_ctx.get('total_provisi')), 0.0)
+    sumber_total_shu = 'Manual' if total_shu_input > 0 else 'Provisi Pinjaman'
+    tahun = (tahun or str(datetime.now().year)).strip()
+
+    cadangan_umum = total_shu * 0.15
+    shu_pasif_total = total_shu * 0.15
+    shu_aktif_total = total_shu * 0.50
+    dana_kesejahteraan = total_shu * 0.05
+    dana_pendidikan = total_shu * 0.005
+    dana_sosial = total_shu * 0.02
+    dana_pembangunan = total_shu * 0.005
+    dana_pengurus = total_shu * 0.10
+    dana_risiko = total_shu * 0.02
+
+    jumlah_anggota = len(anggota_jasa)
+    total_jasa = sum(item['jasa_anggota'] for item in anggota_jasa)
+    shu_pasif_per_anggota = (shu_pasif_total / jumlah_anggota) if jumlah_anggota else 0.0
+
+    alokasi = []
+    for item in anggota_jasa:
+        proporsi = (item['jasa_anggota'] / total_jasa) if total_jasa > 0 else (1.0 / jumlah_anggota if jumlah_anggota else 0.0)
+        shu_aktif = shu_aktif_total * proporsi
+        total_member = shu_pasif_per_anggota + shu_aktif
+        alokasi.append({
+            'id_anggota': item['id_anggota'],
+            'no_anggota': item['no_anggota'],
+            'nama_anggota': item['nama_anggota'],
+            'jasa_anggota': item['jasa_anggota'],
+            'nilai_jasa': item['jasa_anggota'],
+            'shu_pasif': shu_pasif_per_anggota,
+            'shu_aktif': shu_aktif,
+            'total_shu': total_member,
+            'status': 'Draft',
+            'keterangan': catatan,
+        })
+
+    alokasi.sort(key=lambda row: row['total_shu'], reverse=True)
+    catatan_sistem = (
+        f"Sumber SHU: {sumber_total_shu}. "
+        f"Tahun: {tahun}. "
+        f"Pendapatan provisi pinjaman disetujui/lunas: Rp {provisi_ctx.get('total_provisi', 0):,.0f}. "
+        f"Jumlah pinjaman dihitung: {int(provisi_ctx.get('total_pinjaman_disetujui', 0))}."
+    )
+    catatan_final = f"{catatan_sistem}\n{catatan}".strip() if catatan else catatan_sistem
+
+    for row in alokasi:
+        row['keterangan'] = catatan_final
+
+    return {
+        'tahun': tahun,
+        'total_shu': total_shu,
+        'cadangan_umum': cadangan_umum,
+        'shu_pasif_total': shu_pasif_total,
+        'shu_aktif_total': shu_aktif_total,
+        'dana_kesejahteraan': dana_kesejahteraan,
+        'dana_pendidikan': dana_pendidikan,
+        'dana_sosial': dana_sosial,
+        'dana_pembangunan': dana_pembangunan,
+        'dana_pengurus': dana_pengurus,
+        'dana_risiko': dana_risiko,
+        'alokasi': alokasi,
+        'sumber_total_shu': sumber_total_shu,
+        'catatan_perhitungan': catatan_final,
+    }
+
+
+def _load_shu_records() -> list[dict]:
+    ensure_shu_schema()
+    if DATABASE_URL:
+        try:
+            with db_session() as conn:
+                rows = conn.execute(text("SELECT * FROM shu_tahunan ORDER BY tahun DESC")).mappings().all()
+            results = []
+            for r in rows:
+                results.append({
+                    'id_shu': r.get('id_shu'),
+                    'tahun': str(r.get('tahun')) if r.get('tahun') is not None else '',
+                    'tanggal_input': (r.get('tanggal_input').strftime('%Y-%m-%d %H:%M:%S') if r.get('tanggal_input') else ''),
+                    'total_shu': float(r.get('total_shu') or 0),
+                    'cadangan_umum': float(r.get('cadangan_umum') or 0),
+                    'shu_pasif_total': float(r.get('shu_pasif_total') or 0),
+                    'shu_aktif_total': float(r.get('shu_aktif_total') or 0),
+                    'dana_kesejahteraan': float(r.get('dana_kesejahteraan') or 0),
+                    'dana_pendidikan': float(r.get('dana_pendidikan') or 0),
+                    'dana_sosial': float(r.get('dana_sosial') or 0),
+                    'dana_pembangunan': float(r.get('dana_pembangunan') or 0),
+                    'dana_pengurus': float(r.get('dana_pengurus') or 0),
+                    'dana_risiko': float(r.get('dana_risiko') or 0),
+                    'status': r.get('status') or 'Draft',
+                    'dikonfirmasi_oleh': r.get('dikonfirmasi_oleh') or '',
+                    'tanggal_konfirmasi': (r.get('tanggal_konfirmasi').strftime('%Y-%m-%d %H:%M:%S') if r.get('tanggal_konfirmasi') else ''),
+                    'catatan': r.get('catatan') or '',
+                })
+            return results
+        except Exception:
+            return baca_csv(FILE_SHU_TAHUNAN)
+    return baca_csv(FILE_SHU_TAHUNAN)
+
+
+def _load_shu_allocation() -> list[dict]:
+    ensure_shu_schema()
+    if DATABASE_URL:
+        try:
+            with db_session() as conn:
+                rows = conn.execute(text("SELECT * FROM shu_anggota ORDER BY created_at DESC")).mappings().all()
+            results = []
+            for r in rows:
+                results.append({
+                    'id_alokasi': r.get('id_shu_anggota'),
+                    'id_shu': r.get('id_shu'),
+                    'id_anggota': r.get('id_anggota'),
+                    'no_anggota': r.get('no_anggota'),
+                    'nama_anggota': r.get('nama_anggota'),
+                    'jasa_anggota': float(r.get('jasa_anggota') or 0),
+                    'nilai_jasa': float(r.get('nilai_jasa') or 0),
+                    'shu_pasif': float(r.get('shu_pasif') or 0),
+                    'shu_aktif': float(r.get('shu_aktif') or 0),
+                    'total_shu': float(r.get('shu_total') or 0),
+                    'status': r.get('status_ambil') or r.get('status') or 'Draft',
+                    'keterangan': r.get('catatan') or '',
+                })
+            return results
+        except Exception:
+            return baca_csv(FILE_SHU_ALOKASI)
+    return baca_csv(FILE_SHU_ALOKASI)
+
+
+def _save_shu_data(record: dict, alokasi_rows: list[dict]) -> None:
+    # If DATABASE_URL is set, persist to Postgres; otherwise use file-based storage
+    if DATABASE_URL:
+        try:
+            with db_session() as conn:
+                # insert or update shu_tahunan
+                conn.execute(text(
+                    """
+                    INSERT INTO shu_tahunan (id_shu, tahun, tanggal_input, total_shu, cadangan_umum,
+                        shu_pasif_total, shu_aktif_total, dana_kesejahteraan, dana_pendidikan,
+                        dana_sosial, dana_pembangunan, dana_pengurus, dana_risiko, status, dikonfirmasi_oleh, tanggal_konfirmasi, catatan)
+                    VALUES (:id_shu, :tahun, :tanggal_input, :total_shu, :cadangan_umum,
+                        :shu_pasif_total, :shu_aktif_total, :dana_kesejahteraan, :dana_pendidikan,
+                        :dana_sosial, :dana_pembangunan, :dana_pengurus, :dana_risiko, :status, :dikonfirmasi_oleh, :tanggal_konfirmasi, :catatan)
+                    ON CONFLICT (id_shu) DO UPDATE SET
+                        tahun = EXCLUDED.tahun,
+                        total_shu = EXCLUDED.total_shu,
+                        cadangan_umum = EXCLUDED.cadangan_umum,
+                        shu_pasif_total = EXCLUDED.shu_pasif_total,
+                        shu_aktif_total = EXCLUDED.shu_aktif_total,
+                        dana_kesejahteraan = EXCLUDED.dana_kesejahteraan,
+                        dana_pendidikan = EXCLUDED.dana_pendidikan,
+                        dana_sosial = EXCLUDED.dana_sosial,
+                        dana_pembangunan = EXCLUDED.dana_pembangunan,
+                        dana_pengurus = EXCLUDED.dana_pengurus,
+                        dana_risiko = EXCLUDED.dana_risiko,
+                        status = EXCLUDED.status,
+                        dikonfirmasi_oleh = EXCLUDED.dikonfirmasi_oleh,
+                        tanggal_konfirmasi = EXCLUDED.tanggal_konfirmasi,
+                        catatan = EXCLUDED.catatan
+                    """,
+                ), {
+                    'id_shu': record.get('id_shu'),
+                    'tahun': int(record.get('tahun')) if record.get('tahun') else None,
+                    'tanggal_input': record.get('tanggal_input') or datetime.now(),
+                    'total_shu': float(record.get('total_shu') or 0),
+                    'cadangan_umum': float(record.get('cadangan_umum') or 0),
+                    'shu_pasif_total': float(record.get('shu_pasif_total') or 0),
+                    'shu_aktif_total': float(record.get('shu_aktif_total') or 0),
+                    'dana_kesejahteraan': float(record.get('dana_kesejahteraan') or 0),
+                    'dana_pendidikan': float(record.get('dana_pendidikan') or 0),
+                    'dana_sosial': float(record.get('dana_sosial') or 0),
+                    'dana_pembangunan': float(record.get('dana_pembangunan') or 0),
+                    'dana_pengurus': float(record.get('dana_pengurus') or 0),
+                    'dana_risiko': float(record.get('dana_risiko') or 0),
+                    'status': record.get('status') or 'Draft',
+                    'dikonfirmasi_oleh': record.get('dikonfirmasi_oleh') or '',
+                    'tanggal_konfirmasi': record.get('tanggal_konfirmasi') or None,
+                    'catatan': record.get('catatan') or '',
+                })
+
+                # remove existing anggota allocations for this id_shu and re-insert
+                conn.execute(text("DELETE FROM shu_anggota WHERE id_shu = :id_shu"), {'id_shu': record.get('id_shu')})
+                for a in alokasi_rows:
+                    conn.execute(text(
+                        """
+                        INSERT INTO shu_anggota (id_shu_anggota, id_shu, id_anggota, no_anggota, nama_anggota,
+                            jasa_anggota, nilai_jasa, shu_pasif, shu_aktif, shu_total, status_ambil, catatan)
+                        VALUES (:id_shu_anggota, :id_shu, :id_anggota, :no_anggota, :nama_anggota,
+                            :jasa_anggota, :nilai_jasa, :shu_pasif, :shu_aktif, :shu_total, :status_ambil, :catatan)
+                        """
+                    ), {
+                        'id_shu_anggota': a.get('id_alokasi') or str(uuid.uuid4()),
+                        'id_shu': a.get('id_shu'),
+                        'id_anggota': a.get('id_anggota') or '',
+                        'no_anggota': a.get('no_anggota') or '',
+                        'nama_anggota': a.get('nama_anggota') or '',
+                        'jasa_anggota': float(a.get('jasa_anggota') or 0),
+                        'nilai_jasa': float(a.get('nilai_jasa') or 0),
+                        'shu_pasif': float(a.get('shu_pasif') or 0),
+                        'shu_aktif': float(a.get('shu_aktif') or 0),
+                        'shu_total': float(a.get('total_shu') or 0),
+                        'status_ambil': a.get('status') or 'Draft',
+                        'catatan': a.get('keterangan') or a.get('catatan') or '',
+                    })
+        except Exception:
+            # fallback to file storage on any DB error
+            records = _load_shu_records()
+            existing_ids = {row.get('id_shu', ''): i for i, row in enumerate(records)}
+            idx = existing_ids.get(record['id_shu'])
+            if idx is not None:
+                records[idx] = record
+            else:
+                records.append(record)
+            tulis_csv(FILE_SHU_TAHUNAN, records, SHU_TAHUNAN_FIELDNAMES)
+
+            allocations = [row for row in _load_shu_allocation() if row.get('id_shu') != record['id_shu']]
+            allocations.extend(alokasi_rows)
+            tulis_csv(FILE_SHU_ALOKASI, allocations, SHU_ALOKASI_FIELDNAMES)
+        return
+    # file fallback
+    records = _load_shu_records()
+    existing_ids = {row.get('id_shu', ''): i for i, row in enumerate(records)}
+    idx = existing_ids.get(record['id_shu'])
+    if idx is not None:
+        records[idx] = record
+    else:
+        records.append(record)
+    tulis_csv(FILE_SHU_TAHUNAN, records, SHU_TAHUNAN_FIELDNAMES)
+
+    allocations = [row for row in _load_shu_allocation() if row.get('id_shu') != record['id_shu']]
+    allocations.extend(alokasi_rows)
+    tulis_csv(FILE_SHU_ALOKASI, allocations, SHU_ALOKASI_FIELDNAMES)
+
+
+def _format_currency(value) -> str:
+    try:
+        return f"Rp {float(value):,.0f}"
+    except Exception:
+        return 'Rp 0'
+
+
+@app.route('/shu')
+@permission_required('shu.self.view', 'shu.view')
+def halaman_shu():
+    ensure_shu_schema()
+    records = sorted(_load_shu_records(), key=lambda row: (row.get('tahun') or ''), reverse=True)
+    allocations = _load_shu_allocation()
+    current_role = _current_role()
+    current_id_anggota = get_current_user_id_anggota()
+    selected_id = (request.args.get('id_shu') or '').strip()
+
+    selected_record = None
+    if selected_id:
+        selected_record = next((row for row in records if row.get('id_shu') == selected_id), None)
+    if not selected_record and records:
+        selected_record = records[0]
+
+    selected_allocation = []
+    if selected_record:
+        selected_allocation = [row for row in allocations if row.get('id_shu') == selected_record.get('id_shu')]
+
+    tahun_rincian = (selected_record.get('tahun') if selected_record else str(datetime.now().year)) if selected_record else str(datetime.now().year)
+    provisi_details = _rincian_pinjaman_sumber_shu(str(tahun_rincian))
+
+    can_manage = has_permission('shu.manage', current_role)
+    can_validate = has_permission('shu.validate', current_role)
+    can_view_all = has_permission('shu.view', current_role)
+
+    if not can_view_all and current_id_anggota:
+        selected_allocation = [row for row in selected_allocation if row.get('id_anggota') == current_id_anggota]
+        provisi_details = [row for row in provisi_details if row.get('id_anggota') == current_id_anggota]
+
+    my_allocation = None
+    if current_id_anggota:
+        for row in allocations:
+            if row.get('id_anggota') == current_id_anggota:
+                my_allocation = row
+                break
+
+    summary = {
+        'total_shu': sum(_parse_float(row.get('total_shu')) for row in records),
+        'shu_pasif_total': sum(_parse_float(row.get('shu_pasif_total')) for row in records),
+        'shu_aktif_total': sum(_parse_float(row.get('shu_aktif_total')) for row in records),
+        'jumlah_periode': len(records),
+    }
+
+    provisi_summary = {
+        'tahun': str(tahun_rincian),
+        'jumlah_pinjaman': len(provisi_details),
+        'total_provisi': sum(_parse_float(row.get('provisi_nominal')) for row in provisi_details),
+    }
+
+    return render_template(
+        'shu.html',
+        records=records,
+        selected_record=selected_record,
+        selected_allocation=selected_allocation,
+        my_allocation=my_allocation,
+        can_manage=can_manage,
+        can_validate=can_validate,
+        summary=summary,
+        provisi_details=provisi_details,
+        provisi_summary=provisi_summary,
+        format_currency=_format_currency,
+        csrf_token=_get_or_create_csrf_token(),
+        now=datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+    )
+
+
+@app.route('/shu/simpan', methods=['POST'])
+@permission_required('shu.manage')
+@csrf_protect
+def simpan_shu():
+    ensure_shu_schema()
+    tahun = (request.form.get('tahun') or str(datetime.now().year)).strip()
+    mode = (request.form.get('mode') or '').strip().lower()
+    total_shu = _parse_float(request.form.get('total_shu'))
+    catatan = (request.form.get('catatan') or '').strip()
+
+    if not tahun:
+        flash('Tahun SHU wajib diisi.', 'danger')
+        return redirect(url_for('halaman_shu'))
+
+    if mode == 'auto_provisi':
+        total_shu = 0.0
+        catatan = (f"[AUTO] SHU dihitung otomatis dari pendapatan provisi pinjaman tahun {tahun}. " + catatan).strip()
+
+    hasil = hitung_shu_tahunan(total_shu, tahun, catatan)
+    if _parse_float(hasil.get('total_shu')) <= 0:
+        flash('Pendapatan provisi pinjaman pada tahun ini masih 0, sehingga SHU belum dapat dihitung.', 'warning')
+        return redirect(url_for('halaman_shu'))
+
+    id_shu = str(uuid.uuid4())
+    now_text = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    catatan_perhitungan = hasil.get('catatan_perhitungan') or catatan
+    record = {
+        'id_shu': id_shu,
+        'tahun': hasil['tahun'],
+        'tanggal_input': now_text,
+        'total_shu': hasil['total_shu'],
+        'cadangan_umum': hasil['cadangan_umum'],
+        'shu_pasif_total': hasil['shu_pasif_total'],
+        'shu_aktif_total': hasil['shu_aktif_total'],
+        'dana_kesejahteraan': hasil['dana_kesejahteraan'],
+        'dana_pendidikan': hasil['dana_pendidikan'],
+        'dana_sosial': hasil['dana_sosial'],
+        'dana_pembangunan': hasil['dana_pembangunan'],
+        'dana_pengurus': hasil['dana_pengurus'],
+        'dana_risiko': hasil['dana_risiko'],
+        'status': 'Draft',
+        'dikonfirmasi_oleh': '',
+        'tanggal_konfirmasi': '',
+        'catatan': catatan_perhitungan,
+    }
+
+    alokasi_rows = []
+    for item in hasil['alokasi']:
+        alokasi_rows.append({
+            'id_alokasi': str(uuid.uuid4()),
+            'id_shu': id_shu,
+            'id_anggota': item['id_anggota'],
+            'no_anggota': item['no_anggota'],
+            'nama_anggota': item['nama_anggota'],
+            'jasa_anggota': item['jasa_anggota'],
+            'nilai_jasa': item['nilai_jasa'],
+            'shu_pasif': item['shu_pasif'],
+            'shu_aktif': item['shu_aktif'],
+            'total_shu': item['total_shu'],
+            'status': 'Draft',
+            'keterangan': catatan_perhitungan,
+        })
+
+    _save_shu_data(record, alokasi_rows)
+    flash(f"SHU tahun {tahun} berhasil dihitung dari sumber: {hasil.get('sumber_total_shu', 'Manual')} dan disimpan.", 'success')
+    return redirect(url_for('halaman_shu', id_shu=id_shu))
+
+
+@app.route('/shu/konfirmasi/<id_shu>', methods=['POST'])
+@permission_required('shu.validate')
+@csrf_protect
+def konfirmasi_shu(id_shu: str):
+    ensure_shu_schema()
+    now_text = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    if DATABASE_URL:
+        try:
+            with db_session() as conn:
+                res = conn.execute(text(
+                    "UPDATE shu_tahunan SET status = 'Disetujui', dikonfirmasi_oleh = :user, tanggal_konfirmasi = :ts WHERE id_shu = :id_shu"
+                ), {'user': session.get('user', ''), 'ts': now_text, 'id_shu': id_shu})
+                conn.execute(text("UPDATE shu_anggota SET status_ambil = 'Disetujui' WHERE id_shu = :id_shu"), {'id_shu': id_shu})
+                if res.rowcount and res.rowcount > 0:
+                    flash('Data SHU berhasil dikonfirmasi.', 'success')
+                else:
+                    flash('Data SHU tidak ditemukan.', 'warning')
+        except Exception:
+            # fallback to file mode
+            records = _load_shu_records()
+            allocations = _load_shu_allocation()
+            now_text = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            changed = False
+            for row in records:
+                if row.get('id_shu') != id_shu:
+                    continue
+                row['status'] = 'Disetujui'
+                row['dikonfirmasi_oleh'] = session.get('user', '')
+                row['tanggal_konfirmasi'] = now_text
+                changed = True
+            for row in allocations:
+                if row.get('id_shu') == id_shu:
+                    row['status'] = 'Disetujui'
+            if changed:
+                tulis_csv(FILE_SHU_TAHUNAN, records, SHU_TAHUNAN_FIELDNAMES)
+                tulis_csv(FILE_SHU_ALOKASI, allocations, SHU_ALOKASI_FIELDNAMES)
+                flash('Data SHU berhasil dikonfirmasi.', 'success')
+            else:
+                flash('Data SHU tidak ditemukan.', 'warning')
+        return redirect(url_for('halaman_shu', id_shu=id_shu))
+
+    # file fallback
+    records = _load_shu_records()
+    allocations = _load_shu_allocation()
+    now_text = datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    changed = False
+    for row in records:
+        if row.get('id_shu') != id_shu:
+            continue
+        row['status'] = 'Disetujui'
+        row['dikonfirmasi_oleh'] = session.get('user', '')
+        row['tanggal_konfirmasi'] = now_text
+        changed = True
+    for row in allocations:
+        if row.get('id_shu') == id_shu:
+            row['status'] = 'Disetujui'
+    if changed:
+        tulis_csv(FILE_SHU_TAHUNAN, records, SHU_TAHUNAN_FIELDNAMES)
+        tulis_csv(FILE_SHU_ALOKASI, allocations, SHU_ALOKASI_FIELDNAMES)
+        flash('Data SHU berhasil dikonfirmasi.', 'success')
+    else:
+        flash('Data SHU tidak ditemukan.', 'warning')
+    return redirect(url_for('halaman_shu', id_shu=id_shu))
+
+
+@app.route('/shu/hapus/<id_shu>', methods=['POST'])
+@permission_required('shu.manage')
+@csrf_protect
+def hapus_shu(id_shu: str):
+    ensure_shu_schema()
+    if DATABASE_URL:
+        try:
+            with db_session() as conn:
+                conn.execute(text("DELETE FROM shu_anggota WHERE id_shu = :id_shu"), {'id_shu': id_shu})
+                res = conn.execute(text("DELETE FROM shu_tahunan WHERE id_shu = :id_shu"), {'id_shu': id_shu})
+                if res.rowcount and res.rowcount > 0:
+                    flash('Data SHU berhasil dihapus.', 'success')
+                else:
+                    flash('Data SHU tidak ditemukan.', 'warning')
+        except Exception:
+            records = [row for row in _load_shu_records() if row.get('id_shu') != id_shu]
+            allocations = [row for row in _load_shu_allocation() if row.get('id_shu') != id_shu]
+            tulis_csv(FILE_SHU_TAHUNAN, records, SHU_TAHUNAN_FIELDNAMES)
+            tulis_csv(FILE_SHU_ALOKASI, allocations, SHU_ALOKASI_FIELDNAMES)
+            flash('Data SHU berhasil dihapus.', 'success')
+        return redirect(url_for('halaman_shu'))
+
+    records = [row for row in _load_shu_records() if row.get('id_shu') != id_shu]
+    allocations = [row for row in _load_shu_allocation() if row.get('id_shu') != id_shu]
+    tulis_csv(FILE_SHU_TAHUNAN, records, SHU_TAHUNAN_FIELDNAMES)
+    tulis_csv(FILE_SHU_ALOKASI, allocations, SHU_ALOKASI_FIELDNAMES)
+    flash('Data SHU berhasil dihapus.', 'success')
+    return redirect(url_for('halaman_shu'))
+
+
 def generate_excel_laporan_terpadu():
     """Buat workbook Excel berisi 2 tabel: pinjaman + simpanan, plus tabel SHU pinjaman."""
     ensure_pinjaman_plafon_schema()
@@ -6396,6 +7008,7 @@ register_route_aliases(app)
 
 if __name__ == '__main__':
     print("=" * 50)
+    print("  Kepemilikan dan Pengelolaan Aplikasi:")
     print("  KPRI BLK BANDUNG")
     print("  Login : http://localhost:5000")
     print("=" * 50)
