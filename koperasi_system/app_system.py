@@ -3698,6 +3698,7 @@ def tolak_pengajuan_anggota(id_pengajuan):
 #  ROUTE: ANGGOTA
 # ══════════════════════════════════════════════
 @app.route('/anggota')
+@app.route('/anggota/')
 @login_required
 @permission_required('members.view', 'members.self.view')
 def halaman_anggota():
@@ -5194,13 +5195,13 @@ def halaman_pinjaman():
     pinjaman = baca_csv(FILE_PINJAMAN)
     anggota_full = baca_csv(FILE_ANGGOTA)
     cicilan_menunggu = []
+    cicilan = baca_csv(FILE_PINJAMAN_CICILAN)
     if not is_current_user_admin():
         id_anggota = get_current_user_id_anggota()
         pinjaman = [p for p in pinjaman if p.get('id_anggota') == id_anggota]
         anggota = [a for a in anggota_full if a.get('id_anggota') == id_anggota]
     else:
         anggota = anggota_full
-        cicilan = baca_csv(FILE_PINJAMAN_CICILAN)
         if _mark_expired_cicilan(cicilan):
             tulis_csv(FILE_PINJAMAN_CICILAN, cicilan, CICILAN_FIELDNAMES)
         cicilan_menunggu = [c for c in cicilan if c.get('status') == 'Menunggu']
@@ -5261,6 +5262,13 @@ def halaman_pinjaman():
     riwayat_pinjaman_anggota.sort(key=lambda x: (x.get('nama_anggota') or '').lower())
 
     pinjaman_tampil = enrich_pinjaman_untuk_tampilan(pinjaman, anggota_full)
+    periode_gagal_bayar = _geser_bulan_tanggal(datetime.now().date(), -1) or datetime.now().date()
+    for p in pinjaman_tampil:
+        p['gagal_bayar_bulan_ini'] = _sudah_gagal_bayar_bulan_periode(
+            cicilan,
+            p.get('id_pinjaman', ''),
+            periode_gagal_bayar,
+        )
     pinjaman_tampil.reverse()
     return render_template(
         'pinjaman.html',
@@ -5607,6 +5615,24 @@ def _jumlah_cicilan_terhitung(cicilan_rows: list, id_pinjaman: str) -> int:
     return total
 
 
+def _sudah_gagal_bayar_bulan_periode(cicilan_rows: list, id_pinjaman: str, periode) -> bool:
+    """Cek apakah pinjaman sudah pernah ditandai Gagal Bayar di bulan periode yang sama."""
+    for c in cicilan_rows:
+        if c.get('id_pinjaman') != id_pinjaman:
+            continue
+        if (c.get('status') or '').strip() != 'Gagal Bayar':
+            continue
+        tanggal_str = (c.get('tanggal_konfirmasi') or c.get('tanggal_pengajuan') or '').strip()
+        if not tanggal_str:
+            continue
+        parsed = _parse_tanggal_iso(tanggal_str)
+        if not parsed:
+            continue
+        if parsed.year == periode.year and parsed.month == periode.month:
+            return True
+    return False
+
+
 @app.route('/pinjaman/angsur/<id_pinjaman>', methods=['POST'])
 @permission_required('installments.manage')
 @csrf_protect
@@ -5647,6 +5673,61 @@ def angsur_pinjaman(id_pinjaman):
     return redirect('/pinjaman')
 
 
+@app.route('/pinjaman/lunasi/<id_pinjaman>', methods=['POST'])
+@permission_required('installments.manage')
+@csrf_protect
+def lunasi_pinjaman(id_pinjaman):
+    """Lunasi pinjaman aktif sekaligus dan catat riwayat cicilan admin."""
+    ensure_pinjaman_cicilan_schema()
+    ket = (request.form.get('keterangan') or '').strip() or 'Pelunasan pinjaman melalui admin (bayar lunas)'
+    target, meta = _pinjaman_row_dengan_nama(id_pinjaman)
+    if not target:
+        flash('Data pinjaman tidak ditemukan.', 'danger')
+        return redirect('/pinjaman')
+    if target.get('status') != 'Disetujui':
+        flash('Pinjaman ini tidak dalam status aktif.', 'warning')
+        return redirect('/pinjaman')
+
+    sisa = saldo_pinjaman_aktual(target)
+    if sisa <= 0:
+        flash('Pinjaman ini sudah lunas.', 'info')
+        return redirect('/pinjaman')
+
+    id_anggota = target.get('id_anggota', '')
+    cicilan = baca_csv(FILE_PINJAMAN_CICILAN)
+    cicilan.append({
+        'id_cicilan': str(uuid.uuid4()),
+        'id_pinjaman': id_pinjaman,
+        'id_anggota': id_anggota,
+        'no_anggota': meta['no_anggota'],
+        'nama_anggota': meta['nama_anggota'],
+        'jumlah': str(round(sisa, 2)),
+        'tanggal_pengajuan': datetime.now().strftime('%Y-%m-%d'),
+        'status': 'Disetujui',
+        'tanggal_konfirmasi': datetime.now().strftime('%Y-%m-%d'),
+        'dikonfirmasi_oleh': session.get('user') or '',
+        'diajukan_oleh': session.get('user') or '',
+        'keterangan': ket,
+        'metode_pembayaran': 'Admin',
+        'detail_pembayaran': 'Pelunasan',
+    })
+    tulis_csv(FILE_PINJAMAN_CICILAN, cicilan, CICILAN_FIELDNAMES)
+
+    pinjaman_rows = baca_csv(FILE_PINJAMAN)
+    for p in pinjaman_rows:
+        if p.get('id_pinjaman') != id_pinjaman:
+            continue
+        p['sisa_pinjaman'] = '0'
+        p['tenor_bulan'] = '0'
+        p['status'] = 'Lunas'
+        p['tanggal_lunas'] = datetime.now().strftime('%Y-%m-%d')
+        break
+    tulis_csv(FILE_PINJAMAN, pinjaman_rows, PINJAMAN_FIELDNAMES)
+
+    flash('Pinjaman berhasil dilunasi sekaligus (bayar lunas).', 'success')
+    return redirect('/pinjaman')
+
+
 @app.route('/pinjaman/cicilan/gagal-bayar/<id_pinjaman>', methods=['POST'])
 @permission_required('installments.manage')
 @csrf_protect
@@ -5684,6 +5765,9 @@ def gagal_bayar_pinjaman(id_pinjaman):
     jumlah_bayar = nominal_cicilan_aktual(target)
     tanggal_periode = _geser_bulan_tanggal(datetime.now().date(), -1) or datetime.now().date()
     tanggal_periode_str = tanggal_periode.strftime('%Y-%m-%d')
+    if _sudah_gagal_bayar_bulan_periode(cicilan, id_pinjaman, tanggal_periode):
+        flash('Gagal bayar untuk periode bulan ini sudah pernah dicatat. Ulangi lagi di bulan berikutnya.', 'warning')
+        return redirect('/pinjaman')
     cicilan.append({
         'id_cicilan': str(uuid.uuid4()),
         'id_pinjaman': id_pinjaman,

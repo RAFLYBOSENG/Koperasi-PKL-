@@ -212,10 +212,26 @@
                                                 <button type="submit" class="btn btn-sm btn-primary flex-fill" title="Bayar cicilan (admin)">
                                                     <i class="fas fa-money-bill-wave me-1"></i>Bayar (admin)
                                                 </button>
-                                                <button type="submit" formaction="{{ url_for('gagal_bayar_pinjaman', id_pinjaman=p['id_pinjaman']) }}" class="btn btn-sm btn-danger flex-fill" title="Tandai gagal bayar">
+                                                <button type="submit"
+                                                        formaction="{{ url_for('gagal_bayar_pinjaman', id_pinjaman=p['id_pinjaman']) }}"
+                                                        class="btn btn-sm btn-danger flex-fill"
+                                                        title="{% if p.get('gagal_bayar_bulan_ini') %}Gagal bayar bulan ini sudah dicatat{% else %}Tandai gagal bayar{% endif %}"
+                                                        {% if p.get('gagal_bayar_bulan_ini') %}disabled{% endif %}>
                                                     <i class="fas fa-triangle-exclamation me-1"></i>Gagal Bayar
                                                 </button>
                                             </div>
+                                            {% if p.get('gagal_bayar_bulan_ini') %}
+                                            <span class="badge bg-warning text-dark">
+                                                <i class="fas fa-circle-info me-1"></i>Gagal bayar bulan ini sudah tercatat
+                                            </span>
+                                            {% endif %}
+                                            <button type="submit"
+                                                    formaction="{{ url_for('lunasi_pinjaman', id_pinjaman=p['id_pinjaman']) }}"
+                                                    class="btn btn-sm btn-success"
+                                                    title="Bayar lunas"
+                                                    onclick="return confirm('Lunasi pinjaman ini sekaligus sekarang?')">
+                                                <i class="fas fa-circle-check me-1"></i>Bayar Lunas
+                                            </button>
                                         </form>
                                         {% endif %}
                                     {% else %}
