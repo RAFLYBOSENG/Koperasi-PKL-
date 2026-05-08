@@ -35,7 +35,7 @@
                         <select name="id_anggota" class="form-select">
                             <option value="">-- Tidak dikaitkan (untuk admin) --</option>
                             {% for a in anggota %}
-                            <option value="{{ a['id_anggota'] }}">{{ a['no_anggota'] }} - {{ a['nama'] }}</option>
+                            <option value="{{ a['id_anggota'] }}">{{ a['no_anggota'] }} - {{ a['nama_lengkap'] }}</option>
                             {% endfor %}
                         </select>
                         <div class="form-text">Jika role anggota/user, pilih 1 anggota agar akun hanya melihat data anggota itu.</div>
@@ -82,7 +82,7 @@
                                         {% set a = anggota_map.get(u.get('id_anggota')) %}
                                         {% if a %}
                                             <span class="badge bg-info">{{ a['no_anggota'] }}</span>
-                                            <small class="ms-1">{{ a['nama'] }}</small>
+                                            <small class="ms-1">{{ a['nama_lengkap'] }}</small>
                                         {% else %}
                                             <span class="text-danger small">Anggota tidak ditemukan</span>
                                         {% endif %}

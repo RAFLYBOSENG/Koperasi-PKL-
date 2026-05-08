@@ -2,15 +2,22 @@ CREATE TABLE IF NOT EXISTS anggota (
     id_anggota TEXT PRIMARY KEY,
     no_anggota TEXT NOT NULL UNIQUE,
     nik TEXT,
-    nama TEXT NOT NULL,
+    nama_lengkap TEXT NOT NULL,
+    email TEXT,
+    no_hp TEXT,
     alamat TEXT,
-    no_telp TEXT,
+    kategori_anggota TEXT,
     tgl_bergabung DATE,
+    status_anggota TEXT DEFAULT 'Aktif',
+    status_kredit TEXT DEFAULT 'Lancar',
     no_rekening TEXT,
     nama_bank TEXT,
     penghasilan_bersih NUMERIC(18,2) DEFAULT 0,
     cicilan_lain NUMERIC(18,2) DEFAULT 0,
-    simpanan_pokok NUMERIC(18,2) DEFAULT 0
+    simpanan_pokok NUMERIC(18,2) DEFAULT 0,
+    foto_ktp TEXT,
+    created_at TIMESTAMP DEFAULT NOW(),
+    updated_at TIMESTAMP DEFAULT NOW()
 );
 
 -- Master: Roles

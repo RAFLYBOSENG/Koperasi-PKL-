@@ -53,20 +53,20 @@
                         <div class="mt-2">
                             <img src="{{ url_for('static', filename=edit_item.foto) }}" alt="Preview foto berita" class="img-fluid rounded border" style="max-height: 150px; object-fit: cover;">
                         </div>
-                        <div class="mt-2">
-                            <form action="{{ url_for('berita_admin_hapus_foto', berita_id=edit_item.id) }}" method="POST" onsubmit="return confirm('Hapus foto berita ini?')">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <button type="submit" class="btn btn-sm btn-outline-danger">
-                                    <i class="fas fa-image me-1"></i>Hapus Foto Saja
-                                </button>
-                            </form>
-                        </div>
                         {% endif %}
                     </div>
                     <button type="submit" class="btn btn-dark w-100">
                         <i class="fas fa-save me-1"></i>{{ 'Perbarui Berita' if edit_item else 'Simpan Berita' }}
                     </button>
                 </form>
+                {% if edit_item and edit_item.foto %}
+                <form action="{{ url_for('berita_admin_hapus_foto', berita_id=edit_item.id) }}" method="POST" class="mt-2" onsubmit="return confirm('Hapus foto berita ini?')">
+                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                    <button type="submit" class="btn btn-sm btn-outline-danger w-100">
+                        <i class="fas fa-image me-1"></i>Hapus Foto Saja
+                    </button>
+                </form>
+                {% endif %}
             </div>
         </div>
     </div>

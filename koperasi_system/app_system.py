@@ -980,7 +980,7 @@ def migrate_pinjaman_ke_saldo():
             out.append({
                 'id_pinjaman': str(uuid.uuid4()),
                 'id_anggota': id_a,
-                'nama_anggota': ag.get('nama', ''),
+                'nama_anggota': ag.get('nama_lengkap', ''),
                 'no_anggota': ag.get('no_anggota', ''),
                 'jenis_pinjaman': kategori_pinjaman_dari_tenor(ten),
                 'plafon': str(round(plaf, 2)),
@@ -1027,7 +1027,7 @@ def migrate_pinjaman_ke_saldo():
         out.append({
             'id_pinjaman': str(uuid.uuid4()),
             'id_anggota': id_a,
-            'nama_anggota': ag.get('nama', ''),
+            'nama_anggota': ag.get('nama_lengkap', ''),
             'no_anggota': ag.get('no_anggota', ''),
             'jenis_pinjaman': kategori_pinjaman_dari_tenor(ten),
             'plafon': str(round(plaf, 2)),
@@ -1151,7 +1151,7 @@ def catat_simpanan_pokok_awal(
         'id_transaksi': str(uuid.uuid4()),
         'id_anggota': id_anggota,
         'no_anggota': anggota_row.get('no_anggota', ''),
-        'nama_anggota': anggota_row.get('nama', ''),
+        'nama_anggota': anggota_row.get('nama_lengkap', ''),
         'tanggal': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'jenis_simpanan': 'Simpanan Pokok',
         'jumlah': str(round(jumlah, 2)),
@@ -1369,7 +1369,7 @@ def enrich_pinjaman_untuk_tampilan(pinjaman_rows: list, anggota_rows: list) -> l
             out.append({
                 **p,
                 'no_anggota': p.get('no_anggota') or a.get('no_anggota', ''),
-                'nama_anggota': p.get('nama_anggota') or a.get('nama', ''),
+                'nama_anggota': p.get('nama_anggota') or a.get('nama_lengkap', ''),
                 'plafon': str(plaf),
                 'tenor_bulan': str(max(int(tenor_tampil), 0)),
                 'cicilan_per_bulan': str(round(cic, 2)),
@@ -2481,6 +2481,7 @@ ROLE_PERMISSIONS = {
     'super_admin': {
         'members.view',
         'members.manage',
+        'members.approve',
         'savings.deposit.request',
         'savings.deposit.input',
         'savings.deposit.validate',
@@ -2961,7 +2962,8 @@ def inject_globals():
     
     # Ambil current permissions (dari DB jika aktif, otherwise fallback ke file-based)
     if _is_db_mode_enabled() and current_role:
-        current_perms = list(_get_role_permissions_from_db(current_role))
+        db_perms = _get_role_permissions_from_db(current_role)
+        current_perms = list(db_perms) if db_perms else list(ROLE_PERMISSIONS.get(current_role, set()))
     else:
         current_perms = list(ROLE_PERMISSIONS.get(current_role, set()))
     
@@ -3016,15 +3018,17 @@ def landing():
 def pengajuan_anggota_baru():
     """Pengajuan anggota baru dari landing page."""
     ensure_pendaftaran_schema()
-    nama = (request.form.get('nama') or '').strip()
+    nama_lengkap = (request.form.get('nama_lengkap') or '').strip()
+    email = (request.form.get('email') or '').strip()
     alamat = (request.form.get('alamat') or '').strip()
-    no_telp = (request.form.get('no_telp') or '').strip()
+    no_hp = (request.form.get('no_hp') or '').strip()
+    kategori_anggota = (request.form.get('kategori_anggota') or '').strip()
     penghasilan = parse_rupiah_to_float(request.form.get('penghasilan_bersih', '0'))
     cicilan_lain = parse_rupiah_to_float(request.form.get('cicilan_lain', '0'))
     simpanan_pokok = parse_rupiah_to_float(request.form.get('simpanan_pokok', '500000'))
     simpanan_pokok_fix = float(SIMPANAN_RULES['Simpanan Pokok']['fixed'])
 
-    if not nama or not alamat:
+    if not nama_lengkap or not alamat:
         flash('Nama dan alamat wajib diisi untuk pengajuan anggota.', 'danger')
         return redirect(url_for('landing'))
     if penghasilan <= 0:
@@ -3037,9 +3041,11 @@ def pengajuan_anggota_baru():
     data = baca_csv(FILE_PENDAFTARAN_ANGGOTA)
     data.append({
         'id_pengajuan': str(uuid.uuid4()),
-        'nama': nama,
+        'nama_lengkap': nama_lengkap,
+        'email': email,
         'alamat': alamat,
-        'no_telp': no_telp,
+        'no_hp': no_hp,
+        'kategori_anggota': kategori_anggota,
         'penghasilan_bersih': str(int(penghasilan)),
         'cicilan_lain': str(int(cicilan_lain)),
         'simpanan_pokok': str(int(simpanan_pokok)),
@@ -3465,6 +3471,7 @@ def dashboard():
     simpanan_transaksi = baca_csv(FILE_SIMPANAN_TRANSAKSI)
     pinjaman = baca_csv(FILE_PINJAMAN)
     cicilan = baca_csv(FILE_PINJAMAN_CICILAN)
+    current_role = _current_role()
 
     if not is_current_user_admin():
         id_anggota = get_current_user_id_anggota()
@@ -3585,14 +3592,6 @@ def dashboard():
             'tanggal_lunas': p.get('tanggal_lunas', '-') or '-',
         })
 
-    pengajuan_anggota = []
-    jumlah_pengajuan_menunggu = 0
-    if is_current_user_admin():
-        pengajuan_anggota = baca_csv(FILE_PENDAFTARAN_ANGGOTA)
-        pengajuan_anggota.sort(key=lambda x: x.get('tanggal_pengajuan', ''), reverse=True)
-        jumlah_pengajuan_menunggu = sum(1 for p in pengajuan_anggota if p.get('status') == 'Menunggu')
-        pengajuan_anggota = pengajuan_anggota[:8]
-
     return render_template('dashboard.html',
                            total_anggota=total_anggota,
                            total_simpanan=total_simpanan,
@@ -3602,13 +3601,12 @@ def dashboard():
                            pinjaman_per_jenis=pinjaman_per_jenis,
                            transaksi_terakhir=transaksi_terakhir,
                            pinjaman_dashboard=pinjaman_dashboard,
-                           pengajuan_anggota=pengajuan_anggota,
-                           jumlah_pengajuan_menunggu=jumlah_pengajuan_menunggu)
+                           is_auditor_dashboard=(current_role == 'auditor'))
 
 
 @app.route('/pengajuan-anggota/konfirmasi/<id_pengajuan>', methods=['POST'])
 @admin_required
-@permission_required('members.manage')
+@permission_required('members.approve')
 @csrf_protect
 def konfirmasi_pengajuan_anggota(id_pengajuan):
     ensure_pendaftaran_schema()
@@ -3616,51 +3614,9 @@ def konfirmasi_pengajuan_anggota(id_pengajuan):
     found = False
     for p in pengajuan:
         if p.get('id_pengajuan') == id_pengajuan:
-            # Auto-create anggota hanya sekali saat pengajuan pertama kali disetujui.
-            if not p.get('id_anggota_dibuat'):
-                anggota = baca_csv(FILE_ANGGOTA)
-                simpanan = baca_csv(FILE_SIMPANAN)
-                simpanan_transaksi = baca_csv(FILE_SIMPANAN_TRANSAKSI)
-                id_anggota = str(uuid.uuid4())
-                no_anggota = generate_no_anggota_berikutnya(anggota)
-                ph = parse_rupiah_to_float(p.get('penghasilan_bersih', '0'))
-                cl = parse_rupiah_to_float(p.get('cicilan_lain', '0'))
-                simpanan_pokok = parse_rupiah_to_float(p.get('simpanan_pokok', '500000'))
-                if simpanan_pokok <= 0:
-                    simpanan_pokok = float(SIMPANAN_RULES['Simpanan Pokok']['fixed'])
-                anggota_baru = {
-                    'id_anggota': id_anggota,
-                    'no_anggota': no_anggota,
-                    'nik': '',
-                    'nama': p.get('nama', ''),
-                    'alamat': p.get('alamat', ''),
-                    'no_telp': p.get('no_telp', ''),
-                    'tgl_bergabung': datetime.now().strftime('%Y-%m-%d'),
-                    'no_rekening': '',
-                    'nama_bank': '',
-                    'penghasilan_bersih': str(int(ph)),
-                    'cicilan_lain': str(int(cl)),
-                    'simpanan_pokok': str(int(simpanan_pokok)),
-                }
-                anggota.append(anggota_baru)
-                catat_simpanan_pokok_awal(
-                    anggota_baru,
-                    simpanan,
-                    simpanan_transaksi,
-                    simpanan_pokok,
-                    session.get('user') or '',
-                    'Simpanan Pokok validasi anggota baru (approval)',
-                )
-                tulis_csv(FILE_ANGGOTA, anggota, ANGGOTA_FIELDNAMES)
-                tulis_csv(FILE_SIMPANAN, simpanan, SIMPANAN_FIELDNAMES)
-                tulis_csv(FILE_SIMPANAN_TRANSAKSI, simpanan_transaksi, SIMPANAN_TRANSAKSI_FIELDNAMES)
-                p['id_anggota_dibuat'] = id_anggota
-                p['no_anggota_dibuat'] = no_anggota
-                p['simpanan_pokok'] = str(int(simpanan_pokok))
             p['status'] = 'Disetujui'
             p['catatan_admin'] = (
-                f"Dikonfirmasi {session.get('user', 'admin')} pada {datetime.now().strftime('%Y-%m-%d')} "
-                f"(anggota: {p.get('no_anggota_dibuat', '-')})"
+                f"Dikonfirmasi manual oleh {session.get('user', 'admin')} pada {datetime.now().strftime('%Y-%m-%d')}"
             )
             found = True
             break
@@ -3668,13 +3624,13 @@ def konfirmasi_pengajuan_anggota(id_pengajuan):
         flash('Pengajuan anggota tidak ditemukan.', 'danger')
         return redirect(url_for('dashboard'))
     tulis_csv(FILE_PENDAFTARAN_ANGGOTA, pengajuan, PENDAFTARAN_FIELDNAMES)
-    flash('Pengajuan anggota disetujui.', 'success')
+    flash('Pengajuan anggota disetujui secara manual.', 'success')
     return redirect(url_for('dashboard'))
 
 
 @app.route('/pengajuan-anggota/tolak/<id_pengajuan>', methods=['POST'])
 @admin_required
-@permission_required('members.manage')
+@permission_required('members.approve')
 @csrf_protect
 def tolak_pengajuan_anggota(id_pengajuan):
     ensure_pendaftaran_schema()
@@ -3703,7 +3659,10 @@ def tolak_pengajuan_anggota(id_pengajuan):
 @permission_required('members.view', 'members.self.view')
 def halaman_anggota():
     ensure_anggota_schema()
-    anggota = baca_csv(FILE_ANGGOTA)
+    anggota_all = baca_csv(FILE_ANGGOTA)
+    anggota = anggota_all
+    current_role = _current_role()
+
     if not is_current_user_admin():
         id_anggota = get_current_user_id_anggota()
         anggota = [a for a in anggota if a.get('id_anggota') == id_anggota]
@@ -3712,7 +3671,141 @@ def halaman_anggota():
             info = info_pinjaman_dsr_anggota(a)
             a['_dsr_persen'] = info['dsr_persen']
             a['_kap_cicilan'] = info['kapasitas_cicilan']
-    return render_template('anggota.html', anggota=anggota)
+
+    auditor_transaksi = []
+    auditor_riwayat_pinjaman = []
+    if current_role == 'auditor':
+        ensure_simpanan_transaksi_schema()
+        ensure_pinjaman_cicilan_schema()
+        simpanan_transaksi = baca_csv(FILE_SIMPANAN_TRANSAKSI)
+        pinjaman = baca_csv(FILE_PINJAMAN)
+        cicilan = baca_csv(FILE_PINJAMAN_CICILAN)
+
+        def append_transaksi(tipe: str, tanggal: str, nama: str, keterangan: str, status: str = ''):
+            auditor_transaksi.append({
+                'tipe': tipe,
+                'tanggal': tanggal or '-',
+                'nama': nama or '',
+                'keterangan': keterangan,
+                'status': status or '-',
+            })
+
+        for t in simpanan_transaksi:
+            append_transaksi(
+                'Simpanan',
+                t.get('tanggal', '-'),
+                t.get('nama_anggota', ''),
+                f"Simpanan {t.get('jenis_simpanan', 'Manasuka')} - Rp {float(t.get('jumlah') or 0):,.0f}",
+                'Disetujui',
+            )
+
+        for p in pinjaman:
+            tanggal_evt = p.get('tanggal_lunas') or p.get('tanggal_pengajuan') or '-'
+            status_evt = p.get('status') or '-'
+            jenis_evt = p.get('jenis_pinjaman') or 'Pinjaman'
+            keterangan_evt = f"{jenis_evt} - Rp {float(p.get('plafon') or 0):,.0f}"
+            if status_evt == 'Menunggu':
+                keterangan_evt = f"Pengajuan {keterangan_evt}"
+            elif status_evt == 'Disetujui':
+                keterangan_evt = f"Pinjaman disetujui {keterangan_evt}"
+            elif status_evt == 'Lunas':
+                keterangan_evt = f"Pinjaman lunas {keterangan_evt}"
+            elif status_evt == 'Ditolak':
+                keterangan_evt = f"Pengajuan ditolak {keterangan_evt}"
+            append_transaksi('Pinjaman', tanggal_evt, p.get('nama_anggota', ''), keterangan_evt, status_evt)
+
+        for c in cicilan:
+            status_evt = c.get('status') or '-'
+            tanggal_evt = c.get('tanggal_konfirmasi') or c.get('tanggal_pengajuan') or '-'
+            if status_evt == 'Menunggu':
+                label_evt = 'Pengajuan cicilan'
+            elif status_evt == 'Disetujui':
+                label_evt = 'Cicilan diterima'
+            elif status_evt == 'Gagal Bayar':
+                label_evt = 'Cicilan gagal bayar'
+            elif status_evt == 'Ditolak':
+                label_evt = 'Cicilan ditolak'
+            else:
+                label_evt = 'Cicilan'
+            keterangan_evt = f"{label_evt} - Rp {float(c.get('jumlah') or 0):,.0f}"
+            if c.get('metode_pembayaran'):
+                keterangan_evt += f" ({c.get('metode_pembayaran')})"
+            status_tampil = 'Cicilan diterima' if status_evt == 'Disetujui' else status_evt
+            append_transaksi('Cicilan', tanggal_evt, c.get('nama_anggota', ''), keterangan_evt, status_tampil)
+
+        auditor_transaksi.sort(key=lambda x: x.get('tanggal', ''), reverse=True)
+        auditor_transaksi = auditor_transaksi[:120]
+
+        riwayat_map = {}
+        for p in pinjaman:
+            id_a = p.get('id_anggota', '')
+            if not id_a:
+                continue
+            tenor_raw = p.get('tenor_bulan', p.get('tenor_awal', '0'))
+            try:
+                tenor_norm = int(float(tenor_raw or 0))
+            except (TypeError, ValueError):
+                tenor_norm = 0
+            jenis = (p.get('jenis_pinjaman') or '').strip() or kategori_pinjaman_dari_tenor(tenor_norm)
+            if not jenis:
+                continue
+
+            row = riwayat_map.setdefault(id_a, {
+                'id_anggota': id_a,
+                'no_anggota': p.get('no_anggota', ''),
+                'nama_anggota': p.get('nama_anggota', ''),
+                'total_pengajuan': 0,
+                'total_aktif': 0,
+                'jenis_list': [],
+            })
+            if not row['no_anggota']:
+                row['no_anggota'] = p.get('no_anggota', '')
+            if not row['nama_anggota']:
+                row['nama_anggota'] = p.get('nama_anggota', '')
+
+            row['total_pengajuan'] += 1
+            if (p.get('status') or '').strip() == 'Disetujui' and saldo_pinjaman_aktual(p) > 0:
+                row['total_aktif'] += 1
+            if jenis not in row['jenis_list']:
+                row['jenis_list'].append(jenis)
+
+        anggota_map = {a.get('id_anggota'): a for a in anggota_all}
+        for item in riwayat_map.values():
+            a = anggota_map.get(item['id_anggota'], {})
+            no_anggota = item['no_anggota'] or a.get('no_anggota', '-')
+            nama_anggota = item['nama_anggota'] or a.get('nama_lengkap', '-')
+            jenis_items = item['jenis_list']
+            auditor_riwayat_pinjaman.append({
+                'id_anggota': item['id_anggota'],
+                'no_anggota': no_anggota,
+                'nama_anggota': nama_anggota,
+                'total_pengajuan': item['total_pengajuan'],
+                'total_aktif': item['total_aktif'],
+                'jenis_text': ', '.join(jenis_items),
+            })
+        auditor_riwayat_pinjaman.sort(key=lambda x: (x.get('nama_anggota') or '').lower())
+
+    pengajuan_anggota = []
+    jumlah_pengajuan_menunggu = 0
+    if current_role == 'super_admin':
+        ensure_pendaftaran_schema()
+        pengajuan_anggota = baca_csv(FILE_PENDAFTARAN_ANGGOTA)
+        pengajuan_anggota = [p for p in pengajuan_anggota if (p.get('status') or '') == 'Menunggu']
+        pengajuan_anggota.sort(key=lambda x: x.get('tanggal_pengajuan', ''), reverse=True)
+        jumlah_pengajuan_menunggu = len(pengajuan_anggota)
+        pengajuan_anggota = pengajuan_anggota[:10]
+
+    return render_template(
+        'anggota.html',
+        anggota=anggota,
+        auditor_transaksi=auditor_transaksi,
+        auditor_riwayat_pinjaman=auditor_riwayat_pinjaman,
+        pengajuan_anggota=pengajuan_anggota,
+        jumlah_pengajuan_menunggu=jumlah_pengajuan_menunggu,
+        is_auditor_view=(current_role == 'auditor'),
+        is_ketua_view=False,
+        is_super_admin_view=(current_role == 'super_admin'),
+    )
 
 
 @app.route('/anggota/tambah', methods=['POST'])
@@ -3728,11 +3821,15 @@ def tambah_anggota():
     if nik and not is_valid_nik(nik):
         flash('NIK harus terdiri dari tepat 16 digit angka.', 'danger')
         return redirect('/anggota')
-    nama = (request.form.get('nama') or '').strip()
+    nama_lengkap = (request.form.get('nama_lengkap') or '').strip()
+    email = (request.form.get('email') or '').strip()
     alamat = (request.form.get('alamat') or '').strip()
-    no_telp = (request.form.get('no_telp') or '').strip()
+    no_hp = (request.form.get('no_hp') or '').strip()
+    kategori_anggota = (request.form.get('kategori_anggota') or '').strip()
     no_rekening = (request.form.get('no_rekening') or '').strip()
     nama_bank = (request.form.get('nama_bank') or '').strip()
+    status_kredit = (request.form.get('status_kredit') or 'Lancar').strip()
+    foto_ktp = (request.form.get('foto_ktp') or '').strip()
     penghasilan_bersih = str(parse_rupiah_to_float(request.form.get('penghasilan_bersih', '0')))
     cicilan_lain = str(parse_rupiah_to_float(request.form.get('cicilan_lain', '0')))
     simpanan_pokok = parse_rupiah_to_float(request.form.get('simpanan_pokok', '500000'))
@@ -3752,11 +3849,15 @@ def tambah_anggota():
     if target:
         target['no_anggota'] = no_anggota or target.get('no_anggota', '')
         target['nik'] = nik or target.get('nik', '')
-        target['nama'] = nama or target.get('nama', '')
+        target['nama_lengkap'] = nama_lengkap or target.get('nama_lengkap', '')
+        target['email'] = email or target.get('email', '')
         target['alamat'] = alamat or target.get('alamat', '')
-        target['no_telp'] = no_telp or target.get('no_telp', '')
+        target['no_hp'] = no_hp or target.get('no_hp', '')
+        target['kategori_anggota'] = kategori_anggota or target.get('kategori_anggota', '')
         target['no_rekening'] = no_rekening or target.get('no_rekening', '')
         target['nama_bank'] = nama_bank or target.get('nama_bank', '')
+        target['status_kredit'] = status_kredit
+        target['foto_ktp'] = foto_ktp or target.get('foto_ktp', '')
         target['penghasilan_bersih'] = penghasilan_bersih
         target['cicilan_lain'] = cicilan_lain
         target['simpanan_pokok'] = str(int(simpanan_pokok))
@@ -3774,12 +3875,17 @@ def tambah_anggota():
             'id_anggota': str(uuid.uuid4()),
             'no_anggota': no_anggota,
             'nik': nik,
-            'nama': nama,
+            'nama_lengkap': nama_lengkap,
+            'email': email,
             'alamat': alamat,
-            'no_telp': no_telp,
+            'no_hp': no_hp,
+            'kategori_anggota': kategori_anggota,
             'no_rekening': no_rekening,
             'nama_bank': nama_bank,
+            'status_kredit': status_kredit,
+            'foto_ktp': foto_ktp,
             'tgl_bergabung': datetime.now().strftime('%Y-%m-%d'),
+            'status_anggota': 'Aktif',
             'penghasilan_bersih': penghasilan_bersih,
             'cicilan_lain': cicilan_lain,
             'simpanan_pokok': str(int(simpanan_pokok)),
@@ -3837,17 +3943,21 @@ def edit_anggota(id_anggota):
             return redirect(url_for('edit_anggota', id_anggota=id_anggota))
         if can_full_edit:
             data[idx]['nik'] = nik
-            data[idx]['nama'] = (request.form.get('nama') or '').strip()
+            data[idx]['nama_lengkap'] = (request.form.get('nama_lengkap') or '').strip()
+            data[idx]['email'] = (request.form.get('email') or '').strip()
             data[idx]['alamat'] = (request.form.get('alamat') or '').strip()
-            data[idx]['no_telp'] = (request.form.get('no_telp') or '').strip()
+            data[idx]['no_hp'] = (request.form.get('no_hp') or '').strip()
+            data[idx]['kategori_anggota'] = (request.form.get('kategori_anggota') or '').strip()
+            data[idx]['status_kredit'] = (request.form.get('status_kredit') or '').strip()
             data[idx]['no_rekening'] = (request.form.get('no_rekening') or '').strip()
             data[idx]['nama_bank'] = (request.form.get('nama_bank') or '').strip()
             data[idx]['penghasilan_bersih'] = str(int(parse_rupiah_to_float(request.form.get('penghasilan_bersih', '0'))))
             data[idx]['cicilan_lain'] = str(int(parse_rupiah_to_float(request.form.get('cicilan_lain', '0'))))
         else:
             # Edit terbatas: hanya kontak dan rekening.
+            data[idx]['email'] = (request.form.get('email') or '').strip()
             data[idx]['alamat'] = (request.form.get('alamat') or '').strip()
-            data[idx]['no_telp'] = (request.form.get('no_telp') or '').strip()
+            data[idx]['no_hp'] = (request.form.get('no_hp') or '').strip()
             data[idx]['no_rekening'] = (request.form.get('no_rekening') or '').strip()
             data[idx]['nama_bank'] = (request.form.get('nama_bank') or '').strip()
         tulis_csv(FILE_ANGGOTA, data, ANGGOTA_FIELDNAMES)
@@ -3944,7 +4054,7 @@ def import_anggota_excel():
 
         if target:
             target['nik'] = nik or target.get('nik', '')
-            target['nama'] = nama or target.get('nama', '')
+            target['nama_lengkap'] = nama or target.get('nama_lengkap', '')
             target['alamat'] = alamat or target.get('alamat', '')
             target['no_telp'] = no_telp or target.get('no_telp', '')
             target['no_rekening'] = no_rekening or target.get('no_rekening', '')
@@ -4074,7 +4184,7 @@ def parse_anggota_csv_upload(file_storage):
     line_no = 1
     for row in rows_src:
         line_no += 1
-        nama = (row.get(header_map['nama']) or '').strip() if 'nama' in header_map else ''
+        nama = (row.get(header_map['nama_lengkap']) or '').strip() if 'nama_lengkap' in header_map else ''
         nik = normalize_nik(row.get(header_map['nik']))
         no_anggota = (row.get(header_map['no_anggota']) or '').strip() if 'no_anggota' in header_map else ''
         no_hp = (row.get(header_map['no_hp']) or '').strip() if 'no_hp' in header_map else ''
@@ -4195,7 +4305,7 @@ def _append_simpanan_transaksi_import(
         'id_transaksi': str(uuid.uuid4()),
         'id_anggota': id_anggota,
         'no_anggota': anggota_data.get('no_anggota', ''),
-        'nama_anggota': anggota_data.get('nama', ''),
+        'nama_anggota': anggota_data.get('nama_lengkap', ''),
         'tanggal': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
         'jenis_simpanan': jenis_norm,
         'jumlah': str(round(float(jumlah), 2)),
@@ -4219,11 +4329,11 @@ def upsert_anggota_dari_baris_impor(
     for a in anggota_list:
         if a.get('id_anggota') == id_a:
             if nama:
-                a['nama'] = nama
+                a['nama_lengkap'] = nama
             if nik:
                 a['nik'] = nik
             if no_hp:
-                a['no_telp'] = no_hp
+                a['no_hp'] = no_hp
             if alamat:
                 a['alamat'] = alamat
             if no_rekening:
@@ -4297,12 +4407,12 @@ def _resolve_id_anggota_by_nik_nohp(anggota_list: list, nik: str, no_hp: str) ->
         return ''
     # Kecocokan utama: NIK + No HP
     for a in anggota_list:
-        if (a.get('nik') or '').strip() == nik_key and (a.get('no_telp') or '').strip() == hp_key:
+        if (a.get('nik') or '').strip() == nik_key and (a.get('no_hp') or '').strip() == hp_key:
             return (a.get('id_anggota') or '').strip()
     # Fallback aman: NIK sama dan nomor lama kosong -> isi nomor dari import
     for a in anggota_list:
-        if (a.get('nik') or '').strip() == nik_key and not (a.get('no_telp') or '').strip():
-            a['no_telp'] = hp_key
+        if (a.get('nik') or '').strip() == nik_key and not (a.get('no_hp') or '').strip():
+            a['no_hp'] = hp_key
             return (a.get('id_anggota') or '').strip()
     return str(uuid.uuid4())
 
@@ -4500,7 +4610,7 @@ def import_csv_unified():
         for p in pinjaman:
             ag = amap_fin.get(p.get('id_anggota'))
             if ag:
-                p['nama_anggota'] = ag.get('nama', '')
+                p['nama_anggota'] = ag.get('nama_lengkap', '')
                 p['no_anggota'] = ag.get('no_anggota', '')
         tulis_csv(FILE_PINJAMAN, pinjaman, PINJAMAN_FIELDNAMES)
         flash(f'Import selesai: {diproses} baris berhasil diproses.', 'success')
@@ -4683,7 +4793,7 @@ def execute_import_csv_anggota():
             no_anggota = (r.get('no_anggota') or '').strip()
             jenis_pinjaman = (r.get('jenis_pinjaman') or '').strip()
             jenis_simpanan = normalize_jenis_simpanan((r.get('jenis_simpanan') or '').strip())
-            nama = (r.get('nama') or '').strip()
+            nama = (r.get('nama_lengkap') or '').strip()
             alamat = (r.get('alamat') or '').strip()
 
             id_a = _resolve_id_anggota_by_identity(anggota, nik, no_hp, no_anggota)
@@ -4803,7 +4913,7 @@ def execute_import_csv_anggota():
         for p in pinjaman:
             ag = amap_fin.get(p.get('id_anggota'))
             if ag:
-                p['nama_anggota'] = ag.get('nama', '')
+                p['nama_anggota'] = ag.get('nama_lengkap', '')
                 p['no_anggota'] = ag.get('no_anggota', '')
         tulis_csv(FILE_PINJAMAN, pinjaman, PINJAMAN_FIELDNAMES)
 
@@ -4838,7 +4948,7 @@ def cari_nama():
         data = [a for a in data if a.get('id_anggota') == id_anggota]
     for a in data:
         if a['no_anggota'] == no_anggota:
-            return jsonify({'nama': a['nama'], 'id_anggota': a['id_anggota']})
+            return jsonify({'nama': a.get('nama_lengkap', ''), 'id_anggota': a['id_anggota']})
     return jsonify({'nama': '', 'id_anggota': ''})
 
 
@@ -4851,7 +4961,7 @@ def cari_anggota_autocomplete():
     if not is_current_user_admin():
         id_anggota = get_current_user_id_anggota()
         data = [a for a in data if a.get('id_anggota') == id_anggota]
-    hasil = [a for a in data if query in a['nama'].lower()]
+    hasil = [a for a in data if query in (a.get('nama_lengkap') or '').lower()]
     return jsonify(hasil)
 
 
@@ -5024,7 +5134,7 @@ def tambah_simpanan():
             'id_iuran': str(uuid.uuid4()),
             'id_anggota': id_anggota,
             'no_anggota': anggota_data.get('no_anggota', ''),
-            'nama_anggota': anggota_data.get('nama', ''),
+            'nama_anggota': anggota_data.get('nama_lengkap', ''),
             'tanggal': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'jumlah': str(round(jumlah, 2)),
             'keterangan': 'Catatan iuran sosial (tidak menambah saldo simpanan)',
@@ -5037,7 +5147,7 @@ def tambah_simpanan():
             'id_pengajuan': str(uuid.uuid4()),
             'id_anggota': id_anggota,
             'no_anggota': anggota_data.get('no_anggota', ''),
-            'nama_anggota': anggota_data.get('nama', ''),
+            'nama_anggota': anggota_data.get('nama_lengkap', ''),
             'tanggal_pengajuan': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
             'jenis_simpanan': jenis_simpanan,
             'jumlah': str(round(jumlah, 2)),
@@ -5247,7 +5357,7 @@ def halaman_pinjaman():
     for item in riwayat_map.values():
         a = anggota_map.get(item['id_anggota'], {})
         no_anggota = item['no_anggota'] or a.get('no_anggota', '-')
-        nama_anggota = item['nama_anggota'] or a.get('nama', '-')
+        nama_anggota = item['nama_anggota'] or a.get('nama_lengkap', '-')
         jenis_items = item['jenis_list']
         riwayat_pinjaman_anggota.append({
             'id_anggota': item['id_anggota'],
@@ -5451,7 +5561,7 @@ def tambah_pinjaman():
     pinjaman.append({
         'id_pinjaman': pid,
         'id_anggota': id_anggota,
-        'nama_anggota': anggota_data.get('nama', ''),
+        'nama_anggota': anggota_data.get('nama_lengkap', ''),
         'no_anggota': anggota_data.get('no_anggota', ''),
         'jenis_pinjaman': jenis,
         'jenis_simpanan': jenis_simpanan,
@@ -5597,7 +5707,7 @@ def _pinjaman_row_dengan_nama(id_pinjaman: str):
     sisa = saldo_pinjaman_aktual(target)
     return target, {
         'no_anggota': target.get('no_anggota') or ag.get('no_anggota', ''),
-        'nama_anggota': target.get('nama_anggota') or ag.get('nama', ''),
+        'nama_anggota': target.get('nama_anggota') or ag.get('nama_lengkap', ''),
         'cicilan_per_bulan': str(round(cic, 2)),
         'saldo_pinjaman': str(round(sisa, 2)),
     }
@@ -6080,7 +6190,7 @@ def upsert_anggota_from_riwayat(pinjaman_rows: list, simpanan_rows: list) -> dic
         key = (
             (a.get('no_anggota') or '').strip().upper(),
             normalize_nik(a.get('nik')),
-            re.sub(r'\D', '', a.get('no_telp') or ''),
+            re.sub(r'\D', '', a.get('no_hp') or ''),
         )
         if all(key):
             by_key[key] = a
@@ -6092,7 +6202,7 @@ def upsert_anggota_from_riwayat(pinjaman_rows: list, simpanan_rows: list) -> dic
         return (
             (row.get('no_anggota') or '').strip().upper(),
             normalize_nik(row.get('nik')),
-            re.sub(r'\D', '', row.get('no_hp') or row.get('no_telp') or ''),
+            re.sub(r'\D', '', row.get('no_hp') or '')
         )
 
     def ensure_id(row: dict):
@@ -6158,7 +6268,7 @@ def hitung_shu_pinjaman() -> dict:
             bunga_per_anggota[id_anggota] = {
                 'id_anggota': id_anggota,
                 'no_anggota': ag.get('no_anggota', ''),
-                'nama_anggota': ag.get('nama', ''),
+                'nama_anggota': ag.get('nama_lengkap', ''),
                 'bunga_dibayar': 0.0,
             }
         bunga_per_anggota[id_anggota]['bunga_dibayar'] += j
@@ -6590,14 +6700,31 @@ def halaman_shu():
     can_validate = has_permission('shu.validate', current_role)
     can_view_all = has_permission('shu.view', current_role)
 
-    if not can_view_all and current_id_anggota:
-        selected_allocation = [row for row in selected_allocation if row.get('id_anggota') == current_id_anggota]
+    current_no_anggota = ''
+    if current_id_anggota:
+        anggota_rows = baca_csv(FILE_ANGGOTA)
+        anggota_row = next((a for a in anggota_rows if a.get('id_anggota') == current_id_anggota), None)
+        current_no_anggota = (anggota_row.get('no_anggota') or '').strip() if anggota_row else ''
+
+    if not can_view_all and (current_id_anggota or current_no_anggota):
+        selected_allocation = [
+            row for row in selected_allocation
+            if (
+                (current_id_anggota and row.get('id_anggota') == current_id_anggota)
+                or (current_no_anggota and (row.get('no_anggota') or '').strip() == current_no_anggota)
+            )
+        ]
         provisi_details = [row for row in provisi_details if row.get('id_anggota') == current_id_anggota]
 
     my_allocation = None
-    if current_id_anggota:
+    if selected_allocation:
+        my_allocation = selected_allocation[0]
+    elif current_id_anggota or current_no_anggota:
         for row in allocations:
-            if row.get('id_anggota') == current_id_anggota:
+            if (
+                (current_id_anggota and row.get('id_anggota') == current_id_anggota)
+                or (current_no_anggota and (row.get('no_anggota') or '').strip() == current_no_anggota)
+            ):
                 my_allocation = row
                 break
 

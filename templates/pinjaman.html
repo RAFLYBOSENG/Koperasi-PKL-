@@ -17,15 +17,15 @@
                             <select name="id_anggota" id="selectAnggotaPinjaman" class="form-select" required>
                                 <option value="">-- Pilih Anggota --</option>
                                 {% for a in anggota %}
-                                <option value="{{ a['id_anggota'] }}" data-nama="{{ a['nama'] }}">
-                                    {{ a['no_anggota'] }} - {{ a['nama'] }}
+                                <option value="{{ a['id_anggota'] }}" data-nama="{{ a['nama_lengkap'] }}">
+                                    {{ a['no_anggota'] }} - {{ a['nama_lengkap'] }}
                                 </option>
                                 {% endfor %}
                             </select>
                         {% else %}
                             <input type="hidden" name="id_anggota" id="hiddenIdAnggotaUser" value="{{ anggota[0]['id_anggota'] if anggota|length > 0 else '' }}">
                             {% if anggota|length > 0 %}
-                                <input type="text" class="form-control" value="{{ anggota[0]['no_anggota'] }} - {{ anggota[0]['nama'] }}" readonly>
+                                <input type="text" class="form-control" value="{{ anggota[0]['no_anggota'] }} - {{ anggota[0]['nama_lengkap'] }}" readonly>
                             {% else %}
                                 <input type="text" class="form-control" value="Akun belum dihubungkan ke anggota" readonly>
                             {% endif %}

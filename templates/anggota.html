@@ -3,13 +3,13 @@
 {% block content %}
 <div class="row g-4">
     <!-- Form Tambah Anggota -->
+    {% if is_admin %}
     <div class="col-md-4">
         <div class="card border-0 shadow-sm">
             <div class="card-header bg-primary text-white">
                 <h5 class="mb-0"><i class="fas fa-user-plus me-2"></i>Tambah Anggota</h5>
             </div>
             <div class="card-body">
-                {% if is_admin %}
                 <form action="/anggota/tambah" method="POST">
                     <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                     <div class="mb-3">
@@ -26,15 +26,31 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Nama Lengkap</label>
-                        <input type="text" name="nama" class="form-control" required placeholder="Masukkan nama lengkap">
+                        <input type="text" name="nama_lengkap" class="form-control" required placeholder="Masukkan nama lengkap">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" name="email" class="form-control" placeholder="email@example.com">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">No. HP / WhatsApp</label>
+                        <input type="text" name="no_hp" class="form-control" placeholder="08xxxxxxxxxx">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Kategori Anggota</label>
+                        <select name="kategori_anggota" class="form-select">
+                            <option value="">-- Pilih Kategori --</option>
+                            <option value="PNS">PNS</option>
+                            <option value="PPPK">PPPK</option>
+                            <option value="Pegawai Kontrak">Pegawai Kontrak</option>
+                            <option value="Security">Security</option>
+                            <option value="Pensiunan">Pensiunan</option>
+                            <option value="Keluarga Pegawai">Keluarga Pegawai</option>
+                        </select>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Alamat</label>
                         <textarea name="alamat" class="form-control" rows="2" required placeholder="Alamat lengkap"></textarea>
-                    </div>
-                    <div class="mb-3">
-                        <label class="form-label">No. Telepon</label>
-                        <input type="text" name="no_telp" class="form-control" placeholder="08xxxxxxxxxx">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">No. Rekening</label>
@@ -43,6 +59,19 @@
                     <div class="mb-3">
                         <label class="form-label">Nama Bank</label>
                         <input type="text" name="nama_bank" class="form-control" placeholder="Contoh: BRI, BCA, Mandiri">
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Status Kredit</label>
+                        <select name="status_kredit" class="form-select">
+                            <option value="Lancar" selected>Lancar</option>
+                            <option value="Kurang Lancar">Kurang Lancar</option>
+                            <option value="Kredit Macet">Kredit Macet</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Foto KTP (Opsional)</label>
+                        <input type="text" name="foto_ktp" class="form-control" placeholder="Path/URL foto KTP atau kosongkan">
+                        <div class="form-text">Opsional. Bisa berupa URL atau path file.</div>
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Simpanan Pokok (validasi anggota baru)</label>
@@ -81,18 +110,27 @@
                         <i class="fas fa-file-excel me-1"></i>Buka Import Excel + Preview
                     </a>
                 </div>
-                {% else %}
+            </div>
+        </div>
+    </div>
+    {% elif not is_auditor_view and not is_ketua_view and not is_super_admin_view %}
+    <div class="col-md-4">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-primary text-white">
+                <h5 class="mb-0"><i class="fas fa-user-plus me-2"></i>Tambah Anggota</h5>
+            </div>
+            <div class="card-body">
                 <div class="alert alert-info mb-0">
                     <i class="fas fa-circle-info me-1"></i>
                     Akun user hanya dapat melihat data. Penambahan/hapus anggota hanya untuk admin.
                 </div>
-                {% endif %}
             </div>
         </div>
     </div>
+    {% endif %}
 
     <!-- Tabel Anggota -->
-    <div class="col-md-8">
+    <div class="col-md-{% if is_admin %}8{% else %}12{% endif %}">
         <div class="card border-0 shadow-sm">
             <div class="card-header bg-white d-flex justify-content-between align-items-center">
                 <h5 class="mb-0"><i class="fas fa-users me-2 text-primary"></i>Daftar Anggota</h5>
@@ -128,9 +166,9 @@
                                 <td>{{ loop.index }}</td>
                                 <td><span class="badge bg-info">{{ a['no_anggota'] }}</span></td>
                                 <td>{{ a.get('nik', '-') or '-' }}</td>
-                                <td class="fw-bold">{{ a['nama'] }}</td>
+                                <td class="fw-bold">{{ a['nama_lengkap'] }}</td>
                                 <td>{{ a['alamat'] }}</td>
-                                <td>{{ a['no_telp'] }}</td>
+                                <td>{{ a['no_hp'] }}</td>
                                 <td>{{ a.get('no_rekening', '-') or '-' }}</td>
                                 <td>{{ a.get('nama_bank', '-') or '-' }}</td>
                                 <td class="fw-bold text-primary">Rp {{ "{:,.0f}".format((a.get('simpanan_pokok',0)|float)) }}</td>
@@ -167,4 +205,152 @@
         </div>
     </div>
 </div>
+
+            {% if is_super_admin_view %}
+            <div class="row g-4 mt-1">
+                <div class="col-12">
+                    <div class="card border-0 shadow-sm">
+                        <div class="card-header bg-white d-flex justify-content-between align-items-center">
+                            <h5 class="mb-0"><i class="fas fa-clipboard-check me-2 text-primary"></i>Persetujuan Anggota Baru</h5>
+                            <span class="badge bg-warning text-dark">{{ jumlah_pengajuan_menunggu }} menunggu</span>
+                        </div>
+                        <div class="card-body p-0">
+                            <div class="table-responsive">
+                                <table class="table table-hover align-middle mb-0">
+                                    <thead class="table-light">
+                                        <tr>
+                                            <th>Tanggal</th>
+                                            <th>Nama</th>
+                                            <th>Alamat</th>
+                                            <th>No HP</th>
+                                            <th>Penghasilan/Bln</th>
+                                            <th>Cicilan Lain/Bln</th>
+                                            <th>Simpanan Pokok</th>
+                                            <th>Status</th>
+                                            <th>Aksi</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        {% for p in pengajuan_anggota %}
+                                        <tr>
+                                            <td>{{ p['tanggal_pengajuan'] }}</td>
+                                            <td class="fw-bold">{{ p['nama_lengkap'] or p['nama'] or '-' }}</td>
+                                            <td>{{ p['alamat'] or '-' }}</td>
+                                            <td>{{ p['no_hp'] or p['no_telp'] or '-' }}</td>
+                                            <td>Rp {{ "{:,.0f}".format((p.get('penghasilan_bersih', '0')|float)) }}</td>
+                                            <td>Rp {{ "{:,.0f}".format((p.get('cicilan_lain', '0')|float)) }}</td>
+                                            <td class="fw-bold text-primary">Rp {{ "{:,.0f}".format((p.get('simpanan_pokok', '500000')|float)) }}</td>
+                                            <td><span class="badge bg-warning text-dark">{{ p['status'] }}</span></td>
+                                            <td>
+                                                <form action="{{ url_for('konfirmasi_pengajuan_anggota', id_pengajuan=p['id_pengajuan']) }}" method="POST" class="d-inline" onsubmit="return confirm('Setujui pengajuan ini?')">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                    <button type="submit" class="btn btn-sm btn-success">
+                                                        <i class="fas fa-check"></i>
+                                                    </button>
+                                                </form>
+                                                <form action="{{ url_for('tolak_pengajuan_anggota', id_pengajuan=p['id_pengajuan']) }}" method="POST" class="d-inline" onsubmit="return confirm('Tolak pengajuan ini?')">
+                                                    <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                                                    <button type="submit" class="btn btn-sm btn-danger">
+                                                        <i class="fas fa-xmark"></i>
+                                                    </button>
+                                                </form>
+                                            </td>
+                                        </tr>
+                                        {% else %}
+                                        <tr>
+                                            <td colspan="9" class="text-center text-muted py-3">Belum ada pengajuan anggota baru menunggu persetujuan.</td>
+                                        </tr>
+                                        {% endfor %}
+                                    </tbody>
+                                </table>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            {% endif %}
+
+{% if is_auditor_view %}
+<div class="row g-4 mt-1">
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-history me-2 text-primary"></i>Detail Transaksi</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive" style="max-height: 360px; overflow-y: auto;">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>Tipe</th>
+                                <th>Tanggal</th>
+                                <th>Nama Anggota</th>
+                                <th>Keterangan</th>
+                                <th>Status</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for t in auditor_transaksi %}
+                            <tr>
+                                <td>
+                                    <span class="badge bg-{{ 'success' if t['tipe'] == 'Simpanan' else ('warning' if t['tipe'] == 'Pinjaman' else 'info') }}">
+                                        {{ t['tipe'] }}
+                                    </span>
+                                </td>
+                                <td>{{ t['tanggal'] }}</td>
+                                <td>{{ t['nama'] or '-' }}</td>
+                                <td>{{ t['keterangan'] }}</td>
+                                <td>{{ t['status'] }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-3">Belum ada detail transaksi.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="col-12">
+        <div class="card border-0 shadow-sm">
+            <div class="card-header bg-white">
+                <h5 class="mb-0"><i class="fas fa-file-invoice-dollar me-2 text-warning"></i>Riwayat Pinjaman Anggota</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="table-responsive">
+                    <table class="table table-hover mb-0">
+                        <thead class="table-light">
+                            <tr>
+                                <th>No Anggota</th>
+                                <th>Nama</th>
+                                <th>Total Pengajuan</th>
+                                <th>Pinjaman Aktif</th>
+                                <th>Jenis Pinjaman</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for r in auditor_riwayat_pinjaman %}
+                            <tr>
+                                <td>{{ r.no_anggota or '-' }}</td>
+                                <td class="fw-semibold">{{ r.nama_anggota or '-' }}</td>
+                                <td>{{ r.total_pengajuan }}</td>
+                                <td>{{ r.total_aktif }}</td>
+                                <td>{{ r.jenis_text or '-' }}</td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="5" class="text-center text-muted py-3">Belum ada riwayat pinjaman anggota.</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endif %}
 {% endblock %}

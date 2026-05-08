@@ -1,15 +1,6 @@
 {% extends "base.html" %}
 {% block title %}Dashboard - Koperasi Indonesia{% endblock %}
 {% block content %}
-{% if is_admin and jumlah_pengajuan_menunggu > 0 %}
-<div class="alert alert-warning d-flex justify-content-between align-items-center mb-4">
-    <div>
-        <i class="fas fa-bell me-2"></i>
-        Ada <strong>{{ jumlah_pengajuan_menunggu }}</strong> pengajuan anggota baru menunggu konfirmasi.
-    </div>
-</div>
-{% endif %}
-
 <style>
     .dashboard-font {
         font-family: 'Inter', 'Roboto', 'Segoe UI', Arial, sans-serif;
@@ -222,6 +213,7 @@
     </div>
 </div>
 
+{% if not is_auditor_dashboard %}
 <div class="card section-card mb-4">
     <div class="card-header bg-white border-0">
         <h5 class="mb-0 section-header"><i class="fas fa-history me-2"></i>Semua Transaksi</h5>
@@ -346,83 +338,6 @@
         </div>
     </div>
 </div>
-</div>
-
-{% if is_admin %}
-<div class="card border-0 shadow-sm mb-4">
-    <div class="card-header bg-white d-flex justify-content-between align-items-center">
-        <h5 class="mb-0"><i class="fas fa-user-plus me-2 text-primary"></i>Pengajuan Anggota Baru</h5>
-        <span class="badge bg-warning text-dark">{{ jumlah_pengajuan_menunggu }} menunggu</span>
-    </div>
-    <div class="card-body p-0">
-        <div class="table-responsive">
-            <table class="table table-hover mb-0">
-                <thead class="table-light">
-                    <tr>
-                        <th>Tanggal</th>
-                        <th>Nama</th>
-                        <th>Alamat</th>
-                        <th>No Telp</th>
-                        <th>Penghasilan/Bln</th>
-                        <th>Cicilan lain/Bln</th>
-                        <th>Simpanan Pokok</th>
-                        <th>No Anggota</th>
-                        <th>Status</th>
-                        <th>Aksi</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {% for p in pengajuan_anggota %}
-                    <tr>
-                        <td>{{ p['tanggal_pengajuan'] }}</td>
-                        <td class="fw-bold">{{ p['nama'] }}</td>
-                        <td>{{ p['alamat'] }}</td>
-                        <td>{{ p['no_telp'] or '-' }}</td>
-                        <td class="text-success small">Rp {{ "{:,.0f}".format((p.get('penghasilan_bersih', '0')|float)) }}</td>
-                        <td class="small">Rp {{ "{:,.0f}".format((p.get('cicilan_lain', '0')|float)) }}</td>
-                        <td class="fw-bold text-primary">Rp {{ "{:,.0f}".format((p.get('simpanan_pokok', '500000')|float)) }}</td>
-                        <td>
-                            {% if p.get('no_anggota_dibuat') %}
-                                <span class="badge bg-info">{{ p.get('no_anggota_dibuat') }}</span>
-                            {% else %}
-                                -
-                            {% endif %}
-                        </td>
-                        <td>
-                            <span class="badge bg-{{ 'warning text-dark' if p['status']=='Menunggu' else ('success' if p['status']=='Disetujui' else 'danger') }}">
-                                {{ p['status'] }}
-                            </span>
-                        </td>
-                        <td>
-                            {% if p['status'] == 'Menunggu' %}
-                            <form action="{{ url_for('konfirmasi_pengajuan_anggota', id_pengajuan=p['id_pengajuan']) }}" method="POST" class="d-inline"
-                                  onsubmit="return confirm('Setujui pengajuan ini?')">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <button type="submit" class="btn btn-sm btn-success">
-                                    <i class="fas fa-check"></i>
-                                </button>
-                            </form>
-                            <form action="{{ url_for('tolak_pengajuan_anggota', id_pengajuan=p['id_pengajuan']) }}" method="POST" class="d-inline"
-                                  onsubmit="return confirm('Tolak pengajuan ini?')">
-                                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                <button type="submit" class="btn btn-sm btn-danger">
-                                    <i class="fas fa-xmark"></i>
-                                </button>
-                            </form>
-                            {% else %}
-                            <span class="text-muted small">Selesai</span>
-                            {% endif %}
-                        </td>
-                    </tr>
-                    {% else %}
-                    <tr>
-                        <td colspan="10" class="text-center text-muted py-3">Belum ada pengajuan anggota baru.</td>
-                    </tr>
-                    {% endfor %}
-                </tbody>
-            </table>
-        </div>
-    </div>
-</div>
 {% endif %}
+</div>
 {% endblock %}

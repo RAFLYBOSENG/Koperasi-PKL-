@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Selamat Datang - Koperasi Indonesia</title>
+    <title>Selamat Datang - Koperasi BLK Bandung</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
@@ -48,12 +48,45 @@
             display: none;
         }
         .berita-card {
+            display: flex;
+            flex-direction: column;
             min-height: 100%;
+            overflow: hidden;
+        }
+        .berita-card-body {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .berita-title {
+            display: -webkit-box;
+            -webkit-line-clamp: 2;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            min-height: 2.8rem;
+        }
+        .berita-excerpt {
+            display: -webkit-box;
+            -webkit-line-clamp: 3;
+            -webkit-box-orient: vertical;
+            overflow: hidden;
+            min-height: 4.5rem;
         }
         .berita-image {
             width: 100%;
-            height: 170px;
+            height: 155px;
             object-fit: cover;
+        }
+        .berita-open-btn {
+            align-self: flex-start;
+        }
+        .berita-modal-image {
+            width: 100%;
+            max-height: 280px;
+            object-fit: cover;
+        }
+        .berita-modal-body {
+            white-space: pre-line;
         }
         .berita-edge {
             position: absolute;
@@ -117,11 +150,11 @@
         <div class="container py-5">
             <div class="row align-items-center">
                 <div class="col-lg-8">
-                    <img src="{{ url_for('static', filename='logo/koperasi-indonesia-logo-png_seeklogo-79842.png') }}" alt="Logo Koperasi Indonesia" class="landing-brand-logo mb-3">
+                    <img src="{{ url_for('static', filename='logo/Koperasi BLK Bandung.png') }}" alt="Logo Koperasi BLK Bandung" class="landing-brand-logo mb-3">
                     <p class="text-uppercase small fw-semibold text-white-50 mb-2">Selamat datang di portal resmi</p>
-                    <h1 class="display-5 fw-bold mb-3">Membangun Kesejahteraan Bersama di Koperasi Indonesia</h1>
+                    <h1 class="display-5 fw-bold mb-3">Membangun Kesejahteraan Bersama di Koperasi BLK Bandung</h1>
                     <p class="lead text-white-75 mb-4">
-                        Koperasi Indonesia hadir sebagai solusi finansial yang mudah, aman, dan amanah untuk anggota.
+                        Koperasi BLK Bandung hadir sebagai solusi finansial yang mudah, aman, dan amanah untuk anggota.
                         Kelola simpanan dan pinjaman dalam satu sistem terintegrasi.
                     </p>
                     <div class="d-flex flex-wrap gap-2">
@@ -131,7 +164,7 @@
                         <a href="#layanan" class="btn btn-outline-light btn-lg px-4">Pelajari layanan</a>
                     </div>
                     <p class="small text-white-50 mt-3 mb-0">
-                        <i class="fas fa-user-plus me-1"></i><strong>Daftar jadi anggota:</strong> hubungi pengurus Koperasi Indonesia atau admin untuk pencatatan data—setelah terdaftar, Anda akan mendapat akun untuk mengakses portal ini.
+                        <i class="fas fa-user-plus me-1"></i><strong>Daftar jadi anggota:</strong> hubungi pengurus Koperasi BLK Bandung atau admin untuk pencatatan data—setelah terdaftar, Anda akan mendapat akun untuk mengakses portal ini.
                     </p>
                 </div>
             </div>
@@ -329,13 +362,24 @@
                         {% if berita.foto %}
                         <img src="{{ url_for('static', filename=berita.foto) }}" alt="Foto {{ berita.judul }}" class="berita-image rounded-top">
                         {% endif %}
-                        <div class="card-body">
+                        <div class="card-body berita-card-body">
                             <div class="d-flex justify-content-between align-items-center mb-2">
                                 <span class="badge bg-secondary">{{ berita.kategori }}</span>
                                 <small class="text-muted">{{ berita.tanggal }}</small>
                             </div>
-                            <h3 class="h6 fw-bold">{{ berita.judul }}</h3>
-                            <p class="small text-muted mb-0">{{ berita.isi }}</p>
+                            <h3 class="h6 fw-bold berita-title mb-0">{{ berita.judul }}</h3>
+                            <p class="small text-muted mb-0 berita-excerpt">{{ berita.isi }}</p>
+                            <button type="button" class="btn btn-sm btn-outline-primary berita-open-btn"
+                                    data-bs-toggle="modal" data-bs-target="#beritaModal">
+                                <i class="fas fa-up-right-from-square me-1"></i>Baca selengkapnya
+                            </button>
+                            <div class="d-none berita-modal-data">
+                                <span class="berita-modal-judul">{{ berita.judul }}</span>
+                                <span class="berita-modal-kategori">{{ berita.kategori }}</span>
+                                <span class="berita-modal-tanggal">{{ berita.tanggal }}</span>
+                                <span class="berita-modal-isi">{{ berita.isi }}</span>
+                                <span class="berita-modal-foto">{% if berita.foto %}{{ url_for('static', filename=berita.foto) }}{% endif %}</span>
+                            </div>
                         </div>
                     </article>
                 {% endfor %}
@@ -354,6 +398,28 @@
             {% endif %}
         </div>
     </section>
+
+    <div class="modal fade" id="beritaModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-lg modal-dialog-centered modal-dialog-scrollable">
+            <div class="modal-content border-0 shadow-lg">
+                <div class="modal-header border-0">
+                    <div>
+                        <p class="text-uppercase text-muted small mb-1" id="beritaModalKategori"></p>
+                        <h5 class="modal-title fw-bold mb-0" id="beritaModalJudul"></h5>
+                    </div>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+                </div>
+                <div class="modal-body pt-0">
+                    <img id="beritaModalFoto" class="berita-modal-image rounded mb-3 d-none" alt="Foto berita">
+                    <div class="d-flex justify-content-between align-items-center mb-3">
+                        <span class="badge bg-secondary" id="beritaModalKategoriBadge"></span>
+                        <small class="text-muted" id="beritaModalTanggal"></small>
+                    </div>
+                    <div id="beritaModalIsi" class="berita-modal-body text-muted"></div>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <!-- 7. FAQ -->
     <section class="py-5" id="faq">
@@ -399,10 +465,10 @@
                     <form method="POST" action="{{ url_for('pengajuan_anggota_baru') }}" class="row g-2">
                         <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                         <div class="col-md-6">
-                            <input type="text" name="nama" class="form-control form-control-sm" placeholder="Nama lengkap" required>
+                            <input type="text" name="nama_lengkap" class="form-control form-control-sm" placeholder="Nama lengkap" required>
                         </div>
                         <div class="col-md-6">
-                            <input type="text" name="no_telp" class="form-control form-control-sm" placeholder="No. telepon (opsional)">
+                            <input type="text" name="no_hp" class="form-control form-control-sm" placeholder="No. telepon (opsional)">
                         </div>
                         <div class="col-12">
                             <textarea name="alamat" class="form-control form-control-sm" rows="2" placeholder="Alamat lengkap" required></textarea>
@@ -430,7 +496,7 @@
             </div>
             <div class="row align-items-center">
                 <div class="col-md-8 small">
-                    <strong class="text-white">Sistem Informasi Koperasi Indonesia</strong> — akses data untuk anggota &amp; pengurus.
+                    <strong class="text-white">Sistem Informasi Koperasi BLK Bandung</strong> — akses data untuk anggota &amp; pengurus.
                 </div>
                 <div class="col-md-4 text-md-end mt-2 mt-md-0">
                     <a href="{{ url_for('login') }}" class="btn btn-sm btn-outline-light me-2">Login</a>
@@ -588,6 +654,46 @@
                 });
             }
             if (beritaNext) {
+
+            var beritaModal = document.getElementById('beritaModal');
+            if (beritaModal) {
+                beritaModal.addEventListener('show.bs.modal', function (event) {
+                    var trigger = event.relatedTarget;
+                    if (!trigger) return;
+                    var card = trigger.closest('.berita-card');
+                    if (!card) return;
+
+                    var titleEl = card.querySelector('.berita-modal-judul');
+                    var kategoriEl = card.querySelector('.berita-modal-kategori');
+                    var tanggalEl = card.querySelector('.berita-modal-tanggal');
+                    var isiEl = card.querySelector('.berita-modal-isi');
+                    var fotoEl = card.querySelector('.berita-modal-foto');
+
+                    var modalTitle = document.getElementById('beritaModalJudul');
+                    var modalKategori = document.getElementById('beritaModalKategori');
+                    var modalKategoriBadge = document.getElementById('beritaModalKategoriBadge');
+                    var modalTanggal = document.getElementById('beritaModalTanggal');
+                    var modalIsi = document.getElementById('beritaModalIsi');
+                    var modalFoto = document.getElementById('beritaModalFoto');
+
+                    if (modalTitle && titleEl) modalTitle.textContent = (titleEl.textContent || '').trim();
+                    if (modalKategori && kategoriEl) modalKategori.textContent = (kategoriEl.textContent || '').trim();
+                    if (modalKategoriBadge && kategoriEl) modalKategoriBadge.textContent = (kategoriEl.textContent || '').trim();
+                    if (modalTanggal && tanggalEl) modalTanggal.textContent = (tanggalEl.textContent || '').trim();
+                    if (modalIsi && isiEl) modalIsi.textContent = (isiEl.textContent || '').trim();
+
+                    var fotoUrl = fotoEl ? (fotoEl.textContent || '').trim() : '';
+                    if (modalFoto) {
+                        if (fotoUrl) {
+                            modalFoto.src = fotoUrl;
+                            modalFoto.classList.remove('d-none');
+                        } else {
+                            modalFoto.removeAttribute('src');
+                            modalFoto.classList.add('d-none');
+                        }
+                    }
+                });
+            }
                 beritaNext.addEventListener('click', function() {
                     stopAutoNewsScroll();
                     beritaScroll.scrollBy({ left: getNewsStep(), behavior: 'smooth' });

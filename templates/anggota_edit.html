@@ -20,7 +20,7 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Nama Lengkap</label>
-                        <input type="text" name="nama" class="form-control" required value="{{ anggota['nama'] }}">
+                        <input type="text" name="nama_lengkap" class="form-control" required value="{{ anggota['nama_lengkap'] }}">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">Alamat</label>
@@ -28,7 +28,8 @@
                     </div>
                     <div class="mb-3">
                         <label class="form-label">No. Telepon</label>
-                        <input type="text" name="no_telp" class="form-control" value="{{ anggota.get('no_telp', '') }}">
+                        <input type="tel" name="no_hp" class="form-control" value="{{ anggota.get('no_hp', '') }}" placeholder="Cth: 0812345678"
+                               inputmode="tel">
                     </div>
                     <div class="mb-3">
                         <label class="form-label">No. Rekening</label>

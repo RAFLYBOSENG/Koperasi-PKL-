@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Laporan {{ anggota.nama }} - Koperasi Indonesia{% endblock %}
+{% block title %}Laporan {{ anggota.nama_lengkap }} - Koperasi Indonesia{% endblock %}
 {% block content %}
 <div class="card border-0 shadow-sm" id="areaCetak">
     <div class="card-body">
@@ -12,11 +12,11 @@
         <div class="row mb-4">
             <div class="col-6">
                 <p><strong>No Anggota:</strong> {{ anggota.no_anggota }}</p>
-                <p><strong>Nama:</strong> {{ anggota.nama }}</p>
+                <p><strong>Nama:</strong> {{ anggota.nama_lengkap }}</p>
             </div>
             <div class="col-6 text-end">
                 <p><strong>Alamat:</strong> {{ anggota.alamat }}</p>
-                <p><strong>Telp:</strong> {{ anggota.no_telp }}</p>
+                <p><strong>Telp:</strong> {{ anggota.no_hp }}</p>
             </div>
         </div>
 
