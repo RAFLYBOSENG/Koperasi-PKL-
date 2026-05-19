@@ -427,6 +427,14 @@ PAYMENT_STATUS_SUCCESS = 'Berhasil'
 PAYMENT_STATUS_FAILED = 'Gagal'
 PAYMENT_STATUS_EXPIRED = 'Expired'
 
+LOAN_STATUS_WAITING_ADMIN = 'Menunggu Admin Koperasi'
+LOAN_STATUS_WAITING_CHAIR = 'Menunggu Ketua'
+LOAN_STATUS_WAITING_LEGACY = 'Menunggu'
+LOAN_PENDING_ADMIN_STATUSES = {LOAN_STATUS_WAITING_ADMIN, LOAN_STATUS_WAITING_LEGACY}
+LOAN_PENDING_ALL_STATUSES = {LOAN_STATUS_WAITING_ADMIN, LOAN_STATUS_WAITING_CHAIR, LOAN_STATUS_WAITING_LEGACY}
+LOAN_STAGE1_APPROVER_ROLES = {'admin_koperasi', 'super_admin', 'admin'}
+LOAN_STAGE2_APPROVER_ROLES = {'ketua_pengurus', 'super_admin'}
+
 DB_BACKED_FILES = {
     FILE_ANGGOTA: {
         'table': 'anggota',
@@ -1484,7 +1492,7 @@ def migrate_sisa_pinjaman_aktif_ke_total():
     changed = False
     for r in rows:
         status = (r.get('status') or '').strip()
-        if status not in ('Menunggu', 'Disetujui'):
+        if status not in (LOAN_STATUS_WAITING_ADMIN, LOAN_STATUS_WAITING_CHAIR, LOAN_STATUS_WAITING_LEGACY, 'Disetujui'):
             continue
         try:
             plaf = float(r.get('plafon') or r.get('total_pinjaman') or 0)
@@ -1887,7 +1895,7 @@ def ada_pinjaman_solusi_cepat_aktif(pinjaman_rows: list, id_anggota: str) -> boo
         if (p.get('jenis_pinjaman') or '').strip() != 'Solusi Cepat':
             continue
         status = (p.get('status') or '').strip()
-        if status in ('Menunggu', 'Disetujui'):
+        if status in LOAN_PENDING_ALL_STATUSES or status == 'Disetujui':
             return True
         if saldo_pinjaman_aktual(p) > 0 and status != 'Ditolak':
             return True
@@ -2266,8 +2274,8 @@ ROLE_LABELS = {
     'user': 'User',
 }
 
-STAFF_ROLES = {'admin', 'super_admin', 'admin_koperasi', 'bendahara', 'ketua_pengurus', 'auditor'}
-ADMIN_PANEL_ROLES = {'admin', 'super_admin', 'admin_koperasi', 'bendahara', 'ketua_pengurus', 'auditor'}
+STAFF_ROLES = {'admin', 'super_admin', 'admin_koperasi', 'bendahara', 'ketua_pengurus'}
+ADMIN_PANEL_ROLES = {'admin', 'super_admin', 'admin_koperasi', 'bendahara', 'ketua_pengurus'}
 MEMBER_ROLES = {'user', 'anggota'}
 ROLE_OPTIONS = [
     ('super_admin', 'Super Admin'),
@@ -2515,6 +2523,7 @@ ROLE_PERMISSIONS = {
         'savings.withdraw.request',
         'savings.withdraw.validate',
         'loan.documents.review',
+        'loans.approve',
         'loan.disbursement.input',
         'installments.manage',
         'reports.export',
@@ -2792,8 +2801,25 @@ def enforce_session_timeout():
 
     session['_last_activity_ts'] = now_ts
     session.permanent = True
-    _maybe_run_daily_backup()
     return None
+
+
+@app.route('/admin/backups/create', methods=['POST'])
+@csrf_protect
+def admin_backups_create():
+    if not session.get('user'):
+        return redirect(url_for('login', next=request.path))
+    if not has_permission('backup.manage'):
+        abort(403)
+    try:
+        stamp = _backup_legacy_data()
+        entries = _load_backup_log()
+        entries.append({'type': 'manual', 'stamp': stamp, 'created_by': session.get('user'), 'created_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')})
+        _save_backup_log(entries)
+        flash(f'Backup manual dibuat: {stamp}', 'success')
+    except Exception as e:
+        flash(f'Gagal membuat backup: {e}', 'danger')
+    return redirect(url_for('admin_backups'))
 
 
 def _backup_legacy_data() -> None:
@@ -2916,10 +2942,16 @@ def _build_admin_pengajuan_notifications(limit: int = 8):
         return [], 0
 
     items = []
+    current_role = _current_role()
 
     pinjaman_rows = baca_csv(FILE_PINJAMAN)
     for p in pinjaman_rows:
-        if (p.get('status') or '').strip() != 'Menunggu':
+        status_p = (p.get('status') or '').strip()
+        if current_role in LOAN_STAGE1_APPROVER_ROLES and status_p in LOAN_PENDING_ADMIN_STATUSES:
+            pass
+        elif current_role in LOAN_STAGE2_APPROVER_ROLES and status_p == LOAN_STATUS_WAITING_CHAIR:
+            pass
+        else:
             continue
         try:
             nominal = float(p.get('plafon') or 0)
@@ -3538,7 +3570,7 @@ def dashboard():
         status_evt = p.get('status') or '-'
         jenis_evt = p.get('jenis_pinjaman') or 'Pinjaman'
         keterangan_evt = f"{jenis_evt} — Rp {float(p.get('plafon') or 0):,.0f}"
-        if status_evt == 'Menunggu':
+        if status_evt in LOAN_PENDING_ALL_STATUSES:
             keterangan_evt = f"Pengajuan {keterangan_evt}"
         elif status_evt == 'Disetujui':
             keterangan_evt = f"Pinjaman disetujui {keterangan_evt}"
@@ -3663,7 +3695,8 @@ def halaman_anggota():
     anggota = anggota_all
     current_role = _current_role()
 
-    if not is_current_user_admin():
+    # Allow auditors to view all members but keep them non-admin.
+    if not is_current_user_admin() and current_role != 'auditor':
         id_anggota = get_current_user_id_anggota()
         anggota = [a for a in anggota if a.get('id_anggota') == id_anggota]
     else:
@@ -3704,7 +3737,7 @@ def halaman_anggota():
             status_evt = p.get('status') or '-'
             jenis_evt = p.get('jenis_pinjaman') or 'Pinjaman'
             keterangan_evt = f"{jenis_evt} - Rp {float(p.get('plafon') or 0):,.0f}"
-            if status_evt == 'Menunggu':
+            if status_evt in LOAN_PENDING_ALL_STATUSES:
                 keterangan_evt = f"Pengajuan {keterangan_evt}"
             elif status_evt == 'Disetujui':
                 keterangan_evt = f"Pinjaman disetujui {keterangan_evt}"
@@ -3803,7 +3836,7 @@ def halaman_anggota():
         pengajuan_anggota=pengajuan_anggota,
         jumlah_pengajuan_menunggu=jumlah_pengajuan_menunggu,
         is_auditor_view=(current_role == 'auditor'),
-        is_ketua_view=False,
+        is_ketua_view=(current_role == 'ketua_pengurus'),
         is_super_admin_view=(current_role == 'super_admin'),
     )
 
@@ -5573,7 +5606,7 @@ def tambah_pinjaman():
         'cicilan_per_bulan': str(round(cicilan, 2)),
         'sisa_pinjaman': str(round(plafon, 2)),
         'tanggal_pengajuan': tgl,
-        'status': 'Menunggu',
+        'status': LOAN_STATUS_WAITING_ADMIN,
         'tanggal_lunas': '',
     })
     tulis_csv(FILE_PINJAMAN, pinjaman, PINJAMAN_FIELDNAMES)
@@ -5581,7 +5614,7 @@ def tambah_pinjaman():
         f' Provisi Rp {provisi_nominal:,.0f} akan dipotong dari dana pencairan saat disetujui admin.'
         if provisi_nominal > 0 else ''
     )
-    flash(f'Pengajuan pinjaman tercatat dan menunggu konfirmasi admin.{provisi_info}', 'success')
+    flash(f'Pengajuan pinjaman tercatat dan menunggu persetujuan Admin Koperasi.{provisi_info}', 'success')
     return redirect('/pinjaman')
 
 
@@ -5591,44 +5624,58 @@ def tambah_pinjaman():
 def konfirmasi_pinjaman(id_pinjaman):
     pinjaman = baca_csv(FILE_PINJAMAN)
     found = False
+    stage = ''
+    current_role = _current_role()
     provisi_nominal = 0.0
     dana_cair = 0.0
-    for i, p in enumerate(pinjaman):
-        if p.get('id_pinjaman') == id_pinjaman and p.get('status') == 'Menunggu':
-            # Ubah status menjadi Disetujui
-            p['status'] = 'Disetujui'
-            
-            # Provisi dipotong dari dana cair, bukan ditambahkan ke cicilan.
-            try:
-                jenis_pinjaman = (p.get('jenis_pinjaman') or '').strip()
-                plafon = float(p.get('plafon') or 0)
-                tenor = int(float(p.get('tenor_bulan') or 0))
-                bunga_persen = float(p.get('bunga_persen') or 0)
-                
-                # Kewajiban cicilan tetap tanpa provisi (provisi dipotong saat pencairan)
-                total_bayar = hitung_total_bayar_tanpa_provisi(plafon, bunga_persen, tenor, jenis_pinjaman)
-                cicilan = hitung_cicilan_bulanan(plafon, bunga_persen, tenor)
-                provisi_nominal = provisi_nominal_pinjaman(jenis_pinjaman, plafon, tenor)
-                dana_cair = max(plafon - provisi_nominal, 0.0)
-                
-                p['total_bayar'] = str(round(total_bayar, 2))
-                p['cicilan_per_bulan'] = str(round(cicilan, 2))
-                p['tenor_awal'] = str(tenor)
-                p['sisa_pinjaman'] = str(round(plafon, 2))
-            except (TypeError, ValueError):
-                # Jika gagal hitung, gunakan nilai existing
-                plaf = float(p.get('plafon') or 0)
-                p['tenor_awal'] = str(int(float(p.get('tenor_bulan') or 0)))
-                p['sisa_pinjaman'] = str(round(plaf, 2))
-            
-            found = True
-            break
+    target = next((p for p in pinjaman if p.get('id_pinjaman') == id_pinjaman), None)
+    if not target:
+        flash('Pengajuan tidak ditemukan atau sudah diproses.', 'warning')
+        return redirect('/pinjaman')
+
+    status_now = (target.get('status') or '').strip()
+    if status_now in LOAN_PENDING_ADMIN_STATUSES and current_role in LOAN_STAGE1_APPROVER_ROLES:
+        target['status'] = LOAN_STATUS_WAITING_CHAIR
+        found = True
+        stage = 'admin'
+    elif status_now == LOAN_STATUS_WAITING_CHAIR and current_role in LOAN_STAGE2_APPROVER_ROLES:
+        target['status'] = 'Disetujui'
+
+        # Provisi dipotong dari dana cair, bukan ditambahkan ke cicilan.
+        try:
+            jenis_pinjaman = (target.get('jenis_pinjaman') or '').strip()
+            plafon = float(target.get('plafon') or 0)
+            tenor = int(float(target.get('tenor_bulan') or 0))
+            bunga_persen = float(target.get('bunga_persen') or 0)
+
+            # Kewajiban cicilan tetap tanpa provisi (provisi dipotong saat pencairan)
+            total_bayar = hitung_total_bayar_tanpa_provisi(plafon, bunga_persen, tenor, jenis_pinjaman)
+            cicilan = hitung_cicilan_bulanan(plafon, bunga_persen, tenor)
+            provisi_nominal = provisi_nominal_pinjaman(jenis_pinjaman, plafon, tenor)
+            dana_cair = max(plafon - provisi_nominal, 0.0)
+
+            target['total_bayar'] = str(round(total_bayar, 2))
+            target['cicilan_per_bulan'] = str(round(cicilan, 2))
+            target['tenor_awal'] = str(tenor)
+            target['sisa_pinjaman'] = str(round(plafon, 2))
+        except (TypeError, ValueError):
+            # Jika gagal hitung, gunakan nilai existing
+            plaf = float(target.get('plafon') or 0)
+            target['tenor_awal'] = str(int(float(target.get('tenor_bulan') or 0)))
+            target['sisa_pinjaman'] = str(round(plaf, 2))
+
+        found = True
+        stage = 'ketua'
     
     if not found:
-        flash('Pengajuan tidak ditemukan atau sudah diproses.', 'warning')
+        flash('Pengajuan tidak bisa diproses pada tahap ini atau role tidak berwenang.', 'warning')
         return redirect('/pinjaman')
     
     tulis_csv(FILE_PINJAMAN, pinjaman, PINJAMAN_FIELDNAMES)
+
+    if stage == 'admin':
+        flash('Persetujuan Admin Koperasi berhasil. Pengajuan diteruskan ke Ketua Pengurus.', 'success')
+        return redirect('/pinjaman')
     
     # Cari id_anggota dari pinjaman yang baru dikonfirmasi
     id_anggota = None
@@ -5658,17 +5705,31 @@ def konfirmasi_pinjaman(id_pinjaman):
 @csrf_protect
 def tolak_pinjaman(id_pinjaman):
     pinjaman = baca_csv(FILE_PINJAMAN)
+    current_role = _current_role()
     found = False
+    stage = ''
     for p in pinjaman:
-        if p.get('id_pinjaman') == id_pinjaman and p.get('status') == 'Menunggu':
+        if p.get('id_pinjaman') != id_pinjaman:
+            continue
+        status_now = (p.get('status') or '').strip()
+        if status_now in LOAN_PENDING_ADMIN_STATUSES and current_role in LOAN_STAGE1_APPROVER_ROLES:
             p['status'] = 'Ditolak'
             found = True
+            stage = 'admin'
+            break
+        if status_now == LOAN_STATUS_WAITING_CHAIR and current_role in LOAN_STAGE2_APPROVER_ROLES:
+            p['status'] = 'Ditolak'
+            found = True
+            stage = 'ketua'
             break
     if not found:
-        flash('Pengajuan tidak ditemukan atau sudah diproses.', 'warning')
+        flash('Pengajuan tidak bisa ditolak pada tahap ini atau role tidak berwenang.', 'warning')
         return redirect('/pinjaman')
     tulis_csv(FILE_PINJAMAN, pinjaman, PINJAMAN_FIELDNAMES)
-    flash('Pengajuan pinjaman ditolak.', 'warning')
+    if stage == 'admin':
+        flash('Pengajuan pinjaman ditolak oleh Admin Koperasi.', 'warning')
+    else:
+        flash('Pengajuan pinjaman ditolak oleh Ketua Pengurus.', 'warning')
     return redirect('/pinjaman')
 
 
@@ -7157,6 +7218,9 @@ def export_pinjaman():
 @login_required
 def laporan_anggota(id_anggota):
     """Detail laporan per anggota."""
+    current_role = (session.get('role') or '').strip().lower()
+    if current_role == 'auditor':
+        abort(403)
     restrict_id_anggota_or_forbid(id_anggota)
     anggota = baca_csv(FILE_ANGGOTA)
     anggota_data = next((a for a in anggota if a['id_anggota'] == id_anggota), None)

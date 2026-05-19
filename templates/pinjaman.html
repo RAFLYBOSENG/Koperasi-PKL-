@@ -1,5 +1,5 @@
 {% extends "base.html" %}
-{% block title %}Pinjaman - Koperasi Indonesia{% endblock %}
+{% block title %}Pinjaman - Koperasi BLK Bandung{% endblock %}
 {% block content %}
 <div class="row g-4">
     <!-- Form Pengajuan Pinjaman -->
@@ -178,8 +178,12 @@
                                     <span class="badge bg-success">Aktif</span>
                                     {% elif p['status'] == 'Lunas' %}
                                     <span class="badge bg-secondary">Lunas</span>
+                                    {% elif p['status'] == 'Menunggu Admin Koperasi' %}
+                                    <span class="badge bg-warning text-dark">Menunggu Admin Koperasi</span>
+                                    {% elif p['status'] == 'Menunggu Ketua' %}
+                                    <span class="badge bg-info text-dark">Menunggu Ketua</span>
                                     {% elif p['status'] == 'Menunggu' %}
-                                    <span class="badge bg-warning text-dark">Menunggu</span>
+                                    <span class="badge bg-warning text-dark">Menunggu Admin Koperasi</span>
                                     {% elif p['status'] == 'Ditolak' %}
                                     <span class="badge bg-danger">Ditolak</span>
                                     {% else %}
@@ -188,16 +192,18 @@
                                 </td>
                                 <td>
                                     {% if is_admin %}
-                                        {% if p['status'] == 'Menunggu' %}
+                                        {% set can_approve_stage1 = current_role in ['admin_koperasi', 'super_admin', 'admin'] and p['status'] in ['Menunggu Admin Koperasi', 'Menunggu'] %}
+                                        {% set can_approve_stage2 = current_role in ['ketua_pengurus', 'super_admin'] and p['status'] == 'Menunggu Ketua' %}
+                                        {% if can_approve_stage1 or can_approve_stage2 %}
                                             <form action="/pinjaman/konfirmasi/{{ p['id_pinjaman'] }}" method="POST" class="d-inline"
-                                                  onsubmit="return confirm('Setujui pinjaman ini?')">
+                                                  onsubmit="return confirm('{% if can_approve_stage1 %}Teruskan pengajuan ini ke Ketua Pengurus?{% else %}Setujui final pinjaman ini?{% endif %}')">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
-                                                <button type="submit" class="btn btn-sm btn-success" title="Setujui">
-                                                    <i class="fas fa-check"></i>
+                                                <button type="submit" class="btn btn-sm btn-success" title="{% if can_approve_stage1 %}Setujui Admin{% else %}Setujui Ketua{% endif %}">
+                                                    <i class="fas fa-check"></i>{% if can_approve_stage1 %} A1{% else %} A2{% endif %}
                                                 </button>
                                             </form>
                                             <form action="/pinjaman/tolak/{{ p['id_pinjaman'] }}" method="POST" class="d-inline"
-                                                  onsubmit="return confirm('Tolak pinjaman ini?')">
+                                                  onsubmit="return confirm('Tolak pengajuan pinjaman ini?')">
                                                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                                                 <button type="submit" class="btn btn-sm btn-warning text-dark" title="Tolak">
                                                     <i class="fas fa-xmark"></i>
@@ -319,8 +325,12 @@
                                     <span class="badge bg-success">Aktif</span>
                                     {% elif r['status'] == 'Lunas' %}
                                     <span class="badge bg-secondary">Lunas</span>
+                                    {% elif r['status'] == 'Menunggu Admin Koperasi' %}
+                                    <span class="badge bg-warning text-dark">Menunggu Admin Koperasi</span>
+                                    {% elif r['status'] == 'Menunggu Ketua' %}
+                                    <span class="badge bg-info text-dark">Menunggu Ketua</span>
                                     {% elif r['status'] == 'Menunggu' %}
-                                    <span class="badge bg-warning text-dark">Menunggu</span>
+                                    <span class="badge bg-warning text-dark">Menunggu Admin Koperasi</span>
                                     {% elif r['status'] == 'Ditolak' %}
                                     <span class="badge bg-danger">Ditolak</span>
                                     {% else %}

@@ -3,12 +3,23 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>{% block title %}Koperasi Indonesia{% endblock %}</title>
+    <title>{% block title %}Koperasi BLK Bandung{% endblock %}</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" rel="stylesheet">
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" rel="stylesheet">
     <link href="{{ url_for('static', filename='css/style.css') }}" rel="stylesheet">
 </head>
-<body>
+{% set role_theme_map = {
+    'super_admin': 'role-theme-super-admin',
+    'admin_koperasi': 'role-theme-admin-koperasi',
+    'bendahara': 'role-theme-bendahara',
+    'ketua_pengurus': 'role-theme-ketua-pengurus',
+    'auditor': 'role-theme-auditor',
+    'anggota': 'role-theme-anggota',
+    'admin': 'role-theme-admin-legacy',
+    'user': 'role-theme-user-legacy'
+} %}
+{% set role_theme_class = role_theme_map.get(current_role, 'role-theme-default') %}
+<body class="{{ role_theme_class }}">
     <style>
         .brand-logo {
             width: 40px;
@@ -35,9 +46,9 @@
         <!-- Sidebar -->
         <nav id="sidebar" class="bg-dark">
             <div class="sidebar-header text-center py-3">
-                <img src="{{ url_for('static', filename='logo/Koperasi BLK Bandung.png') }}" alt="Logo Koperasi Indonesia" class="brand-logo mb-2">
-                <h4 class="text-white mb-0">KOPERASI INDONESIA</h4>
-                <small class="text-muted">Sistem Informasi Koperasi Indonesia</small>
+                <img src="{{ url_for('static', filename='logo/Koperasi BLK Bandung.png') }}" alt="Logo Koperasi BLK Bandung" class="brand-logo mb-2">
+                <h4 class="text-white mb-0">KOPERASI BLK BANDUNG</h4>
+                <small class="text-muted">Sistem Informasi Koperasi BLK BANDUNG</small>
             </div>
             <ul class="list-unstyled components">
                 <li class="{% if request.path == '/dashboard' %}active{% endif %}">
@@ -58,7 +69,7 @@
                     <a href="/pinjaman"><i class="fas fa-hand-holding-dollar me-2"></i>Pinjaman</a>
                 </li>
                 {% endif %}
-                {% if 'shu.self.view' in current_permissions or 'shu.view' in current_permissions %}
+                {% if ('shu.self.view' in current_permissions or 'shu.view' in current_permissions) and current_role != 'anggota' %}
                 <li class="{% if '/shu' in request.path %}active{% endif %}">
                     <a href="/shu"><i class="fas fa-coins me-2"></i>SHU</a>
                 </li>

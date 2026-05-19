@@ -2,6 +2,168 @@
    KOPERASI - Custom Styles
    ────────────────────────────────────────── */
 
+/* Role-based color themes */
+body {
+    --role-sidebar-bg: #212529;
+    --role-sidebar-bg-2: #1b1f23;
+    --role-accent: #0d6efd;
+    --role-accent-soft: rgba(13, 110, 253, 0.22);
+    --role-nav-glow: rgba(13, 110, 253, 0.08);
+    --role-pattern-base: rgba(255, 255, 255, 0.05);
+    --role-pattern-accent: rgba(255, 255, 255, 0.10);
+    --role-body-bg: #f6f8fb;
+    --role-body-bg-2: #eef3f9;
+    --batik-color: #2b6cb0;
+    --batik-opacity: 0.08;
+    --batik-scale: 140px;
+    --batik-mask-base: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cg fill='white'%3E%3Cg transform='translate(60 60)'%3E%3Crect x='-7' y='-30' width='14' height='60' rx='7' transform='rotate(45)'/%3E%3Crect x='-7' y='-30' width='14' height='60' rx='7' transform='rotate(-45)'/%3E%3Ccircle cx='0' cy='-40' r='7'/%3E%3Ccircle cx='0' cy='40' r='7'/%3E%3Ccircle cx='-40' cy='0' r='7'/%3E%3Ccircle cx='40' cy='0' r='7'/%3E%3Ccircle cx='28' cy='-28' r='5'/%3E%3Ccircle cx='28' cy='28' r='5'/%3E%3Ccircle cx='-28' cy='28' r='5'/%3E%3Ccircle cx='-28' cy='-28' r='5'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    --batik-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cg fill='white'%3E%3Cg transform='translate(60 60)'%3E%3Crect x='-7' y='-30' width='14' height='60' rx='7' transform='rotate(45)'/%3E%3Crect x='-7' y='-30' width='14' height='60' rx='7' transform='rotate(-45)'/%3E%3Ccircle cx='0' cy='-40' r='7'/%3E%3Ccircle cx='0' cy='40' r='7'/%3E%3Ccircle cx='-40' cy='0' r='7'/%3E%3Ccircle cx='40' cy='0' r='7'/%3E%3Ccircle cx='28' cy='-28' r='5'/%3E%3Ccircle cx='28' cy='28' r='5'/%3E%3Ccircle cx='-28' cy='28' r='5'/%3E%3Ccircle cx='-28' cy='-28' r='5'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+    position: relative;
+    isolation: isolate;
+}
+
+body.role-theme-default {
+    --role-sidebar-bg: #212529;
+    --role-sidebar-bg-2: #161a1e;
+    --role-accent: #0d6efd;
+    --role-accent-soft: rgba(13, 110, 253, 0.22);
+    --role-nav-glow: rgba(13, 110, 253, 0.08);
+    --role-pattern-base: rgba(255, 255, 255, 0.05);
+    --role-pattern-accent: rgba(255, 255, 255, 0.10);
+    --role-body-bg: #f6f8fb;
+    --role-body-bg-2: #eef3f9;
+    --batik-color: #2b6cb0;
+    --batik-opacity: 0.07;
+    --batik-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 120'%3E%3Cg fill='white'%3E%3Cg transform='translate(60 60)'%3E%3Crect x='-7' y='-30' width='14' height='60' rx='7' transform='rotate(45)'/%3E%3Crect x='-7' y='-30' width='14' height='60' rx='7' transform='rotate(-45)'/%3E%3Ccircle cx='0' cy='-40' r='7'/%3E%3Ccircle cx='0' cy='40' r='7'/%3E%3Ccircle cx='-40' cy='0' r='7'/%3E%3Ccircle cx='40' cy='0' r='7'/%3E%3Ccircle cx='28' cy='-28' r='5'/%3E%3Ccircle cx='28' cy='28' r='5'/%3E%3Ccircle cx='-28' cy='28' r='5'/%3E%3Ccircle cx='-28' cy='-28' r='5'/%3E%3C/g%3E%3C/g%3E%3C/svg%3E");
+}
+
+body.role-theme-super-admin {
+    --role-sidebar-bg: #102a43;
+    --role-sidebar-bg-2: #16324d;
+    --role-accent: #f59e0b;
+    --role-accent-soft: rgba(245, 158, 11, 0.24);
+    --role-nav-glow: rgba(245, 158, 11, 0.12);
+    --role-pattern-base: rgba(245, 158, 11, 0.08);
+    --role-pattern-accent: rgba(255, 255, 255, 0.08);
+    --role-body-bg: #f8f2e7;
+    --role-body-bg-2: #f2e4c6;
+    --batik-color: #1d4ed8;
+    --batik-opacity: 0.08;
+    --batik-mask: var(--batik-mask-base);
+}
+
+body.role-theme-admin-koperasi {
+    --role-sidebar-bg: #16324d;
+    --role-sidebar-bg-2: #1f496d;
+    --role-accent: #22c55e;
+    --role-accent-soft: rgba(34, 197, 94, 0.20);
+    --role-nav-glow: rgba(34, 197, 94, 0.12);
+    --role-pattern-base: rgba(34, 197, 94, 0.08);
+    --role-pattern-accent: rgba(255, 255, 255, 0.08);
+    --role-body-bg: #eef8f0;
+    --role-body-bg-2: #ddf3df;
+    --batik-color: #0f766e;
+    --batik-opacity: 0.06;
+    --batik-mask: var(--batik-mask-base);
+}
+
+body.role-theme-bendahara {
+    --role-sidebar-bg: #3b1e1e;
+    --role-sidebar-bg-2: #5b2b2b;
+    --role-accent: #ef4444;
+    --role-accent-soft: rgba(239, 68, 68, 0.20);
+    --role-nav-glow: rgba(239, 68, 68, 0.12);
+    --role-pattern-base: rgba(239, 68, 68, 0.08);
+    --role-pattern-accent: rgba(255, 255, 255, 0.08);
+    --role-body-bg: #fbf1f1;
+    --role-body-bg-2: #f7dedc;
+    --batik-color: #b91c1c;
+    --batik-opacity: 0.07;
+    --batik-mask: var(--batik-mask-base);
+}
+
+body.role-theme-ketua-pengurus {
+    --role-sidebar-bg: #1f2937;
+    --role-sidebar-bg-2: #374151;
+    --role-accent: #a855f7;
+    --role-accent-soft: rgba(168, 85, 247, 0.20);
+    --role-nav-glow: rgba(168, 85, 247, 0.12);
+    --role-pattern-base: rgba(168, 85, 247, 0.08);
+    --role-pattern-accent: rgba(255, 255, 255, 0.08);
+    --role-body-bg: #f6f1fb;
+    --role-body-bg-2: #eadff6;
+    --batik-color: #7c3aed;
+    --batik-opacity: 0.07;
+    --batik-mask: var(--batik-mask-base);
+}
+
+body.role-theme-auditor {
+    --role-sidebar-bg: #0f4c5c;
+    --role-sidebar-bg-2: #126b7a;
+    --role-accent: #14b8a6;
+    --role-accent-soft: rgba(20, 184, 166, 0.20);
+    --role-nav-glow: rgba(20, 184, 166, 0.12);
+    --role-pattern-base: rgba(20, 184, 166, 0.08);
+    --role-pattern-accent: rgba(255, 255, 255, 0.08);
+    --role-body-bg: #edf8f7;
+    --role-body-bg-2: #d8f0ed;
+    --batik-color: #0e7490;
+    --batik-opacity: 0.07;
+    --batik-mask: var(--batik-mask-base);
+}
+
+body.role-theme-anggota {
+    --role-sidebar-bg: #2c3e50;
+    --role-sidebar-bg-2: #415a73;
+    --role-accent: #3b82f6;
+    --role-accent-soft: rgba(59, 130, 246, 0.20);
+    --role-nav-glow: rgba(59, 130, 246, 0.12);
+    --role-pattern-base: rgba(59, 130, 246, 0.08);
+    --role-pattern-accent: rgba(255, 255, 255, 0.08);
+    --role-body-bg: #f4f8ff;
+    --role-body-bg-2: #e2ecfb;
+    --batik-color: #2563eb;
+    --batik-opacity: 0.07;
+    --batik-mask: var(--batik-mask-base);
+}
+
+body.role-theme-admin-legacy,
+body.role-theme-user-legacy {
+    --role-sidebar-bg: #2b2f33;
+    --role-sidebar-bg-2: #1f2327;
+    --role-accent: #64748b;
+    --role-accent-soft: rgba(100, 116, 139, 0.20);
+    --role-nav-glow: rgba(100, 116, 139, 0.10);
+    --role-pattern-base: rgba(255, 255, 255, 0.05);
+    --role-pattern-accent: rgba(255, 255, 255, 0.08);
+    --role-body-bg: #f7f7f8;
+    --role-body-bg-2: #eceef1;
+    --batik-color: #64748b;
+    --batik-opacity: 0.06;
+    --batik-mask: var(--batik-mask-base);
+}
+
+body::before {
+    content: none;
+}
+
+body .wrapper,
+body .container,
+body .container-fluid,
+body .modal,
+body .offcanvas {
+    position: relative;
+    z-index: 1;
+}
+
+body .card,
+body .navbar,
+body .dropdown-menu,
+body .alert,
+body .table-responsive {
+    background-clip: padding-box;
+}
+
 /* Layout */
 .wrapper {
     display: flex;
@@ -12,6 +174,13 @@
     min-width: 260px;
     max-width: 260px;
     min-height: 100vh;
+    background:
+        radial-gradient(circle at 15% 20%, var(--role-pattern-accent) 0 2px, transparent 2px 18px),
+        radial-gradient(circle at 85% 14%, var(--role-pattern-base) 0 2px, transparent 2px 20px),
+        radial-gradient(circle at 50% 50%, rgba(255,255,255,0.04) 0 1px, transparent 1px 24px),
+        repeating-linear-gradient(45deg, rgba(255,255,255,0.03) 0 8px, transparent 8px 18px),
+        linear-gradient(180deg, var(--role-sidebar-bg), var(--role-sidebar-bg-2)) !important;
+    box-shadow: inset -1px 0 0 rgba(255,255,255,0.04);
     transition: all 0.3s;
     position: fixed;
     top: 0;
@@ -27,6 +196,10 @@
     width: 100%;
     margin-left: 260px;
     transition: all 0.3s;
+    background:
+    radial-gradient(circle at top right, rgba(255,255,255,0.85), transparent 28%),
+    linear-gradient(135deg, rgba(255,255,255,0.72), rgba(255,255,255,0.45)),
+    linear-gradient(135deg, var(--role-body-bg), var(--role-body-bg-2));
 }
 
 #content.active {
@@ -36,6 +209,11 @@
 /* Sidebar */
 .sidebar-header {
     border-bottom: 1px solid rgba(255,255,255,0.1);
+}
+
+.sidebar-header h4,
+.sidebar-header small {
+    text-shadow: 0 1px 0 rgba(0, 0, 0, 0.12);
 }
 
 #sidebar ul.components {
@@ -56,14 +234,106 @@
 
 #sidebar ul li a:hover {
     color: #fff;
-    background: rgba(255,255,255,0.1);
+    background: rgba(255,255,255,0.12);
     padding-left: 30px;
 }
 
 #sidebar ul li.active a {
     color: #fff;
-    background: rgba(13, 110, 253, 0.3);
-    border-left: 4px solid #0d6efd;
+    background: var(--role-accent-soft);
+    border-left: 4px solid var(--role-accent);
+}
+
+body.role-theme-super-admin #content .navbar {
+    border-bottom: 2px solid var(--role-nav-glow);
+}
+
+.navbar {
+    backdrop-filter: blur(8px);
+    background: rgba(248, 249, 250, 0.86) !important;
+    border-bottom: 1px solid rgba(148, 163, 184, 0.18);
+}
+
+body.role-theme-super-admin #content .navbar .text-primary {
+    color: #b45309 !important;
+}
+
+body.role-theme-super-admin #content .navbar .btn-outline-primary {
+    color: #b45309;
+    border-color: #d97706;
+}
+
+body.role-theme-super-admin #content .navbar .btn-outline-primary:hover {
+    background: #d97706;
+    border-color: #d97706;
+    color: #fff;
+}
+
+body[class^="role-theme-"] .navbar .badge.bg-danger,
+body[class^="role-theme-"] .badge.bg-danger {
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.18) inset;
+}
+
+body[class^="role-theme-"] .card,
+body[class^="role-theme-"] .table-responsive,
+body[class^="role-theme-"] .alert,
+body[class^="role-theme-"] .dropdown-menu {
+    border-color: rgba(148, 163, 184, 0.16);
+}
+
+body[class^="role-theme-"] .card {
+    background: rgba(255, 255, 255, 0.88);
+    box-shadow: 0 10px 28px rgba(15, 23, 42, 0.08);
+}
+
+body[class^="role-theme-"] .table,
+body[class^="role-theme-"] .table-responsive {
+    background: rgba(255, 255, 255, 0.88);
+}
+
+body.role-theme-super-admin .card-header,
+body.role-theme-admin-koperasi .card-header,
+body.role-theme-bendahara .card-header,
+body.role-theme-ketua-pengurus .card-header,
+body.role-theme-auditor .card-header,
+body.role-theme-anggota .card-header {
+    background: linear-gradient(90deg, rgba(255,255,255,0.92), rgba(255,255,255,0.75));
+}
+
+body.role-theme-super-admin .badge.bg-primary,
+body.role-theme-super-admin .btn-primary {
+    background-color: #d97706 !important;
+    border-color: #d97706 !important;
+}
+
+body.role-theme-admin-koperasi .badge.bg-primary,
+body.role-theme-admin-koperasi .btn-primary {
+    background-color: #0f766e !important;
+    border-color: #0f766e !important;
+}
+
+body.role-theme-bendahara .badge.bg-primary,
+body.role-theme-bendahara .btn-primary {
+    background-color: #b91c1c !important;
+    border-color: #b91c1c !important;
+}
+
+body.role-theme-ketua-pengurus .badge.bg-primary,
+body.role-theme-ketua-pengurus .btn-primary {
+    background-color: #7c3aed !important;
+    border-color: #7c3aed !important;
+}
+
+body.role-theme-auditor .badge.bg-primary,
+body.role-theme-auditor .btn-primary {
+    background-color: #0e7490 !important;
+    border-color: #0e7490 !important;
+}
+
+body.role-theme-anggota .badge.bg-primary,
+body.role-theme-anggota .btn-primary {
+    background-color: #2563eb !important;
+    border-color: #2563eb !important;
 }
 
 /* Icon boxes */

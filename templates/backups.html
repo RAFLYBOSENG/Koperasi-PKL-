@@ -1,6 +1,6 @@
 {% extends 'base.html' %}
 
-{% block title %}Backups - Koperasi Indonesia{% endblock %}
+{% block title %}Backups - Koperasi BLK Bandung{% endblock %}
 
 {% block content %}
 <div class="card">
@@ -9,6 +9,10 @@
   </div>
   <div class="card-body">
     <p class="small text-muted">Hanya Super Admin dapat mengakses halaman ini. Gunakan tombol <strong>Apply</strong> untuk mengembalikan file dari backup.</p>
+    <form method="post" action="{{ url_for('admin_backups_create') }}" class="mb-3">
+      <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+      <button type="submit" class="btn btn-sm btn-primary">Buat Backup Manual</button>
+    </form>
 
     <h6>Available Backups</h6>
     {% if backups %}

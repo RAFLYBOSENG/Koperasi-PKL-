@@ -35,6 +35,8 @@
             gap: 16px;
             overflow-x: auto;
             scroll-behavior: smooth;
+            scroll-snap-type: x proximity;
+            overscroll-behavior-x: contain;
             padding-bottom: 0;
             scrollbar-width: none;
             -ms-overflow-style: none;
@@ -52,6 +54,8 @@
             flex-direction: column;
             min-height: 100%;
             overflow: hidden;
+            scroll-snap-align: start;
+            flex: 0 0 auto;
         }
         .berita-card-body {
             display: flex;
@@ -236,7 +240,7 @@
                         <div class="card-body">
                             <h3 class="h6 fw-bold text-secondary"><i class="fas fa-store me-2"></i>Unit usaha</h3>
                             <p class="small text-muted mb-0">
-                                Modul ini fokus pada administrasi simpanan &amp; pinjaman di Koperasi Indonesia. Jika ada unit usaha lain, data dapat dikembangkan terpisah di fase berikutnya.
+                                Modul ini fokus pada administrasi simpanan &amp; pinjaman di Koperasi BLK BANDUNG. Jika ada unit usaha lain, data dapat dikembangkan terpisah di fase berikutnya.
                             </p>
                         </div>
                     </div>
@@ -248,7 +252,7 @@
     <!-- 4. Keunggulan -->
     <section class="py-5">
         <div class="container">
-            <h2 class="h4 fw-bold text-center mb-4">Mengapa melalui Koperasi Indonesia?</h2>
+            <h2 class="h4 fw-bold text-center mb-4">Mengapa melalui Koperasi BLK BANDUNG?</h2>
             <div class="row g-3">
                 <div class="col-md-6 col-lg-3">
                     <div class="d-flex gap-3">
@@ -297,7 +301,7 @@
             <ul class="small text-muted mb-0">
                 <li><strong>Export Excel:</strong> setelah login sebagai admin, buka menu <strong>Laporan</strong> untuk mengunduh data simpanan dan pinjaman.</li>
                 <li><strong>Lupa password anggota:</strong> gunakan halaman <a href="{{ url_for('lupa_password') }}">Lupa password</a> dengan memverifikasi nomor anggota.</li>
-                <li><strong>Formulir PDF:</strong> belum terhubung file—silakan gunakan dokumen fisik dari pengurus Koperasi Indonesia jika diperlukan.</li>
+                <li><strong>Formulir PDF:</strong> belum terhubung file—silakan gunakan dokumen fisik dari pengurus Koperasi BLK BANDUNG jika diperlukan.</li>
             </ul>
         </div>
     </section>
@@ -431,7 +435,7 @@
                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq1">Bagaimana cara berhenti jadi anggota?</button>
                     </h3>
                     <div id="faq1" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
-                        <div class="accordion-body small text-muted">Pengurangan keanggotaan mengikuti AD/ART Koperasi Indonesia. Silakan ajukan secara tertulis kepada pengurus—proses administrasi dilakukan di luar sistem ini.</div>
+                        <div class="accordion-body small text-muted">Pengurangan keanggotaan mengikuti AD/ART Koperasi BLK BANDUNG. Silakan ajukan secara tertulis kepada pengurus—proses administrasi dilakukan di luar sistem ini.</div>
                     </div>
                 </div>
                 <div class="accordion-item border rounded mb-2 overflow-hidden">
@@ -439,7 +443,7 @@
                         <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#faq2">Berapa maksimal pinjaman yang bisa saya ambil?</button>
                     </h3>
                     <div id="faq2" class="accordion-collapse collapse" data-bs-parent="#faqAccordion">
-                        <div class="accordion-body small text-muted">Batas plafon mengacu pada kebijakan Koperasi Indonesia dan kemampuan bayar. Di aplikasi, Anda mengajukan plafon; keputusan akhir oleh admin setelah verifikasi.</div>
+                        <div class="accordion-body small text-muted">Batas plafon mengacu pada kebijakan Koperasi BLK BANDUNG dan kemampuan bayar. Di aplikasi, Anda mengajukan plafon; keputusan akhir oleh admin setelah verifikasi.</div>
                     </div>
                 </div>
                 <div class="accordion-item border rounded mb-2 overflow-hidden">
@@ -596,10 +600,19 @@
         var autoNewsPaused = false;
         var autoLastTs = 0;
         var NEWS_AUTO_SPEED = 0.03; // px per ms (~30px/detik)
+        var beritaSetWidth = 0;
+        var beritaOriginalCount = 0;
+        var beritaLoopReady = false;
+        var beritaWrapTimer = null;
+        var beritaJumping = false;
 
         function getNewsStep() {
             if (!beritaScroll) return 320;
-            return Math.max(240, Math.floor(beritaScroll.clientWidth * 0.75));
+            var firstCard = beritaScroll.querySelector('.berita-card');
+            if (!firstCard) return Math.max(240, Math.floor(beritaScroll.clientWidth * 0.75));
+            var cardStyle = window.getComputedStyle(beritaScroll);
+            var gap = parseFloat(cardStyle.columnGap || cardStyle.gap || '16') || 16;
+            return Math.max(240, Math.round(firstCard.getBoundingClientRect().width + gap));
         }
 
         function updateBeritaEdgeState() {
@@ -609,6 +622,81 @@
             if (beritaNext) beritaNext.style.display = canScroll ? 'flex' : 'none';
         }
 
+        function setupBeritaLooping() {
+            if (!beritaScroll || beritaLoopReady) return;
+            var originals = Array.from(beritaScroll.children);
+            if (originals.length < 2) return;
+
+            beritaOriginalCount = originals.length;
+
+            var before = document.createDocumentFragment();
+            var after = document.createDocumentFragment();
+            originals.forEach(function(node) {
+                before.appendChild(node.cloneNode(true));
+            });
+            originals.forEach(function(node) {
+                after.appendChild(node.cloneNode(true));
+            });
+
+            beritaScroll.insertBefore(before, beritaScroll.firstChild);
+            beritaScroll.appendChild(after);
+            beritaLoopReady = true;
+
+            window.requestAnimationFrame(function() {
+                beritaSetWidth = getBeritaSetWidth();
+                if (beritaSetWidth) {
+                    beritaScroll.style.scrollBehavior = 'auto';
+                    beritaScroll.scrollLeft = beritaSetWidth;
+                    window.requestAnimationFrame(function() {
+                        beritaScroll.style.scrollBehavior = 'smooth';
+                    });
+                }
+            });
+        }
+
+        function getBeritaSetWidth() {
+            if (!beritaScroll || !beritaOriginalCount) return 0;
+            var cards = Array.from(beritaScroll.querySelectorAll('.berita-card'));
+            var startCard = cards[beritaOriginalCount];
+            var endCard = cards[(beritaOriginalCount * 2) - 1];
+            if (!startCard || !endCard) return 0;
+            return Math.max(0, (endCard.offsetLeft + endCard.getBoundingClientRect().width) - startCard.offsetLeft + 16);
+        }
+
+        function jumpBerita(delta) {
+            if (!beritaScroll || !beritaLoopReady || !beritaSetWidth || beritaJumping) return;
+            beritaJumping = true;
+            var prevBehavior = beritaScroll.style.scrollBehavior;
+            beritaScroll.style.scrollBehavior = 'auto';
+            beritaScroll.scrollLeft += delta;
+            window.requestAnimationFrame(function() {
+                beritaScroll.style.scrollBehavior = prevBehavior || 'smooth';
+                beritaJumping = false;
+            });
+        }
+
+        function normalizeBeritaPosition() {
+            if (!beritaScroll || !beritaLoopReady || !beritaSetWidth || beritaJumping) return;
+            var leftBoundary = beritaSetWidth;
+            var rightBoundary = beritaSetWidth * 2;
+            var current = beritaScroll.scrollLeft;
+            if (current < leftBoundary - 4) {
+                jumpBerita(beritaSetWidth);
+            } else if (current >= rightBoundary - 4) {
+                jumpBerita(-beritaSetWidth);
+            }
+        }
+
+        function scheduleBeritaWrap() {
+            if (beritaWrapTimer) {
+                window.clearTimeout(beritaWrapTimer);
+            }
+            beritaWrapTimer = window.setTimeout(function() {
+                beritaSetWidth = getBeritaSetWidth();
+                normalizeBeritaPosition();
+            }, 80);
+        }
+
         function autoNewsLoop(ts) {
             if (!beritaScroll) return;
             if (!autoLastTs) autoLastTs = ts;
@@ -616,13 +704,18 @@
             autoLastTs = ts;
 
             if (!autoNewsPaused) {
-                var maxScroll = beritaScroll.scrollWidth - beritaScroll.clientWidth;
-                if (maxScroll > 0) {
+                if (beritaScroll.scrollWidth > beritaScroll.clientWidth) {
                     var next = beritaScroll.scrollLeft + (dt * NEWS_AUTO_SPEED);
-                    if (next >= maxScroll - 1) {
-                        beritaScroll.scrollLeft = 0;
-                    } else {
+                    if (beritaLoopReady && beritaSetWidth) {
                         beritaScroll.scrollLeft = next;
+                        normalizeBeritaPosition();
+                    } else {
+                        var maxScroll = beritaScroll.scrollWidth - beritaScroll.clientWidth;
+                        if (next >= maxScroll - 1) {
+                            beritaScroll.scrollLeft = 0;
+                        } else {
+                            beritaScroll.scrollLeft = next;
+                        }
                     }
                 }
             }
@@ -644,6 +737,11 @@
 
         if (beritaScroll) {
             updateBeritaEdgeState();
+            setupBeritaLooping();
+            window.addEventListener('load', function() {
+                setupBeritaLooping();
+                updateBeritaEdgeState();
+            });
             window.addEventListener('resize', updateBeritaEdgeState);
 
             if (beritaPrev) {
@@ -654,6 +752,13 @@
                 });
             }
             if (beritaNext) {
+                beritaNext.addEventListener('click', function() {
+                    stopAutoNewsScroll();
+                    beritaScroll.scrollBy({ left: getNewsStep(), behavior: 'smooth' });
+                    scheduleBeritaWrap();
+                    startAutoNewsScroll();
+                });
+            }
 
             var beritaModal = document.getElementById('beritaModal');
             if (beritaModal) {
@@ -694,12 +799,6 @@
                     }
                 });
             }
-                beritaNext.addEventListener('click', function() {
-                    stopAutoNewsScroll();
-                    beritaScroll.scrollBy({ left: getNewsStep(), behavior: 'smooth' });
-                    startAutoNewsScroll();
-                });
-            }
 
             beritaScroll.addEventListener('mouseenter', function() {
                 stopAutoNewsScroll();
@@ -708,7 +807,11 @@
             beritaScroll.addEventListener('touchstart', function() {
                 stopAutoNewsScroll();
             }, { passive: true });
-            beritaScroll.addEventListener('touchend', startAutoNewsScroll, { passive: true });
+            beritaScroll.addEventListener('touchend', function() {
+                scheduleBeritaWrap();
+                startAutoNewsScroll();
+            }, { passive: true });
+            beritaScroll.addEventListener('scroll', scheduleBeritaWrap);
 
             var isDraggingNews = false;
             var dragStartX = 0;
