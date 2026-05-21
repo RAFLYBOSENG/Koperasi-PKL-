@@ -1,4 +1,4 @@
-CREATE TABLE IF NOT EXISTS anggota (
+/*CREATE TABLE IF NOT EXISTS anggota (
     id_anggota TEXT PRIMARY KEY,
     no_anggota TEXT NOT NULL UNIQUE,
     nik TEXT,
@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS anggota (
     tgl_bergabung DATE,
     status_anggota TEXT DEFAULT 'Aktif',
     status_kredit TEXT DEFAULT 'Lancar',
+    catatan_kredit TEXT,
     no_rekening TEXT,
     nama_bank TEXT,
     penghasilan_bersih NUMERIC(18,2) DEFAULT 0,
@@ -18,7 +19,7 @@ CREATE TABLE IF NOT EXISTS anggota (
     foto_ktp TEXT,
     created_at TIMESTAMP DEFAULT NOW(),
     updated_at TIMESTAMP DEFAULT NOW()
-);
+);*/
 
 -- Master: Roles
 CREATE TABLE IF NOT EXISTS roles (
@@ -123,6 +124,7 @@ CREATE TABLE IF NOT EXISTS pinjaman (
     tanggal_pengajuan TIMESTAMP,
     status TEXT,
     tanggal_lunas DATE,
+    tanggal_pencairan DATE,
     CONSTRAINT fk_pinjaman_anggota FOREIGN KEY (id_anggota) REFERENCES anggota (id_anggota) ON DELETE CASCADE
 );
 

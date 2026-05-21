@@ -156,6 +156,19 @@ body .offcanvas {
     z-index: 1;
 }
 
+body .modal {
+    position: fixed;
+    z-index: 1055;
+}
+
+body .modal-backdrop {
+    z-index: 1050;
+}
+
+body .modal-dialog {
+    pointer-events: auto;
+}
+
 body .card,
 body .navbar,
 body .dropdown-menu,
@@ -405,4 +418,20 @@ body.role-theme-anggota .btn-primary {
     #content.active {
         margin-left: 0;
     }
+}
+
+/* Ensure member notification dropdown (anggota) appears above the fixed sidebar */
+.notif-dropdown-menu.member-notif {
+    position: fixed !important;
+    z-index: 2100 !important;
+    right: 1rem;
+    top: 3.6rem;
+    width: min(92vw, 380px);
+    max-height: 420px;
+    overflow: hidden;
+}
+
+.notif-list-scroll {
+    max-height: 300px;
+    overflow-y: auto;
 }

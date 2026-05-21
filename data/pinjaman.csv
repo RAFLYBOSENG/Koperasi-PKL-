@@ -1,3 +1,1 @@
 id_pinjaman,id_anggota,nama_anggota,no_anggota,jenis_pinjaman,plafon,tenor_bulan,bunga_persen,total_bayar,cicilan_per_bulan,sisa_pinjaman,tanggal_pengajuan,status,tanggal_lunas
-a125a1c9-a388-4e7d-8306-e9ca07d2e309,9b6a5ab2-720d-4c05-bb25-0b8629c85dd3,boseng,AGT-0001,Jangka Panjang,3300000.0,13,1.0,3729000.0,286846.15,3442153.85,2026-04-13,Disetujui,
-e90ccf76-dd7d-4c57-9cd6-83f314b06a68,9b6a5ab2-720d-4c05-bb25-0b8629c85dd3,boseng,AGT-0001,Jangka Panjang,1000000.0,13,0.8,1104000.0,84923.08,934153.84,2026-04-13,Disetujui,

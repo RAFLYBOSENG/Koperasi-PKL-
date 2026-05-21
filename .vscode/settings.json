@@ -1,0 +1,26 @@
+{
+    "sqltools.connections": [
+        {
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "localhost",
+            "driver": "PostgreSQL",
+            "name": "Koperasi BLK",
+            "connectString": "postgresql://neondb_owner:npg_sjeEU6b5cfHh@ep-late-paper-amohg8m3-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+        },
+        {
+            "pgOptions": {
+                "ssl": {
+                    "rejectUnauthorized": true,
+                    "requestCert": true
+                }
+            },
+            "ssh": "Disabled",
+            "previewLimit": 50,
+            "server": "localhost",
+            "driver": "PostgreSQL",
+            "name": "Koperasi BLK Bandung",
+            "connectString": "postgresql://neondb_owner:npg_sjeEU6b5cfHh@ep-late-paper-amohg8m3-pooler.c-5.us-east-1.aws.neon.tech/neondb?sslmode=require&channel_binding=require"
+        }
+    ]
+}

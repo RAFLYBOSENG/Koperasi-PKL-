@@ -226,6 +226,76 @@ function initializeMainPage() {
         syncPinjamanJenisButtonStyles('all');
     }
 
+    // Ensure notification dropdowns are rendered above other content by
+    // moving the menu to document.body when shown and positioning it.
+    // Apply to all `.notif-dropdown-menu` instances so every role's
+    // notifications behave consistently (bendahara, admin, anggota, ...)
+    document.querySelectorAll('.dropdown button[data-bs-toggle="dropdown"]').forEach(function (btn) {
+        var parent = btn.closest('.dropdown');
+        if (!parent) return;
+        var menu = parent.querySelector('.notif-dropdown-menu');
+        if (!menu) return;
+
+        parent.addEventListener('shown.bs.dropdown', function () {
+            // move to body
+            try { document.body.appendChild(menu); } catch (e) { }
+            menu.classList.add('show');
+            menu.style.position = 'fixed';
+            // keep notification z-index below modals to avoid blocking modal interaction
+            menu.style.zIndex = 1200;
+
+            var rect = btn.getBoundingClientRect();
+            // place menu under the button, align right edge
+            var menuWidth = Math.min(window.innerWidth * 0.92, 420);
+            var left = rect.right - menuWidth - 8; // small gap
+            if (left < 8) left = 8;
+            menu.style.width = menuWidth + 'px';
+            menu.style.top = (rect.bottom + 6) + 'px';
+            menu.style.left = left + 'px';
+        });
+
+        parent.addEventListener('hide.bs.dropdown', function () {
+            // try move back into parent to keep DOM tidy
+            menu.style.position = '';
+            menu.style.top = '';
+            menu.style.left = '';
+            menu.style.width = '';
+            menu.style.zIndex = '';
+            menu.classList.remove('show');
+            try { parent.appendChild(menu); } catch (e) { }
+        });
+    });
+
+    // Ensure any open dropdowns are closed when a modal is about to be shown,
+    // so dropdowns (which may have higher z-index) don't block modal interaction.
+    document.addEventListener('show.bs.modal', function () {
+        document.querySelectorAll('.dropdown button[data-bs-toggle="dropdown"]').forEach(function (btn) {
+            try {
+                var inst = bootstrap.Dropdown.getOrCreateInstance(btn);
+                inst.hide();
+            } catch (e) {
+                // ignore
+            }
+        });
+        // Move modal element to document.body to avoid stacking-context issues
+        try {
+            var activeModals = document.querySelectorAll('.modal.show');
+            activeModals.forEach(function(m) {
+                try { document.body.appendChild(m); } catch (e) { }
+            });
+        } catch (e) { }
+    });
+
+    // Also ensure newly shown modal is appended to body so backdrop and z-index work
+    document.addEventListener('shown.bs.modal', function (ev) {
+        try {
+            var modalEl = ev.target;
+            if (modalEl && modalEl.classList && modalEl.classList.contains('modal')) {
+                try { document.body.appendChild(modalEl); } catch (e) { }
+            }
+        } catch (e) { }
+    });
+
     document.querySelectorAll('table').forEach(function (table) {
         const header = table.querySelector('thead');
         if (!header) return;

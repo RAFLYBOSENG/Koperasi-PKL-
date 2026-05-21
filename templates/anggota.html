@@ -114,7 +114,7 @@
             </div>
         </div>
     </div>
-    {% elif not is_auditor_view and not is_ketua_view and not is_super_admin_view %}
+    {% elif not is_auditor_view and not is_ketua_view and not is_super_admin_view and current_role != 'anggota' %}
     <div class="col-md-4">
         <div class="card border-0 shadow-sm">
             <div class="card-header bg-primary text-white">
@@ -153,6 +153,8 @@
                                 <th>Simpanan Pokok</th>
                                 <th>Penghasilan/Bln</th>
                                 <th>Cicilan Lain/Bln</th>
+                                <th>Status Kredit</th>
+                                <th>Catatan Kredit</th>
                                 {% if can_manage_anggota %}
                                 <th class="text-nowrap" title="DSR otomatis dari penghasilan bersih">DSR</th>
                                 <th class="text-nowrap small" title="(Penghasilan × DSR) − cicilan lain">Kap.&nbsp;cicilan</th>
@@ -175,6 +177,12 @@
                                 <td class="fw-bold text-primary">Rp {{ "{:,.0f}".format((a.get('simpanan_pokok',0)|float)) }}</td>
                                 <td class="text-success fw-bold">Rp {{ "{:,.0f}".format((a.get('penghasilan_bersih',0)|float)) }}</td>
                                 <td>Rp {{ "{:,.0f}".format((a.get('cicilan_lain',0)|float)) }}</td>
+                                <td>
+                                    {% set sk = (a.get('status_kredit', 'Lancar') or 'Lancar') %}
+                                    {% set sk_class = 'success' if sk == 'Lancar' else ('warning text-dark' if sk == 'Kurang Lancar' else 'danger') %}
+                                    <span class="badge bg-{{ sk_class }}">{{ sk }}</span>
+                                </td>
+                                <td class="small text-muted">{{ a.get('catatan_kredit', '-') or '-' }}</td>
                                 {% if can_manage_anggota %}
                                 <td><span class="badge bg-secondary">{{ a['_dsr_persen'] }}%</span></td>
                                 <td class="small">Rp {{ "{:,.0f}".format(a['_kap_cicilan']) }}</td>

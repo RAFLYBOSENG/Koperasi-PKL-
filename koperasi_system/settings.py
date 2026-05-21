@@ -96,13 +96,13 @@ PINJAMAN_FIELDNAMES = [
     'id_pinjaman', 'id_anggota', 'nama_anggota', 'no_anggota',
     'jenis_pinjaman', 'jenis_simpanan', 'plafon', 'tenor_awal', 'tenor_bulan', 'bunga_persen',
     'total_bayar', 'cicilan_per_bulan', 'sisa_pinjaman',
-    'tanggal_pengajuan', 'status', 'tanggal_lunas',
+    'tanggal_pengajuan', 'tanggal_pencairan', 'status', 'tanggal_lunas',
 ]
 
 ANGGOTA_FIELDNAMES = [
     'id_anggota', 'no_anggota', 'nik', 'nama_lengkap', 'email', 'no_hp', 'alamat',
     'kategori_anggota', 'tgl_bergabung', 'status_anggota', 'status_kredit',
-    'no_rekening', 'nama_bank',
+    'catatan_kredit', 'no_rekening', 'nama_bank',
     'penghasilan_bersih', 'cicilan_lain', 'simpanan_pokok', 'foto_ktp',
 ]
 

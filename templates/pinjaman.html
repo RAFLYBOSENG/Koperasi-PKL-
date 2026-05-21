@@ -372,6 +372,7 @@
                                 <th>Metode</th>
                                 <th>Status Trx</th>
                                 <th>VA</th>
+                                <th>Bukti</th>
                                 <th>Keterangan</th>
                                 <th>Aksi</th>
                             </tr>
@@ -391,6 +392,21 @@
                                     </span>
                                 </td>
                                 <td class="small"><code>{{ c.get('va_number', '-') or '-' }}</code></td>
+                                <td class="small">
+                                    {% if c.get('bukti_transfer_url') %}
+                                    <button type="button"
+                                            class="btn btn-link p-0 cicilan-proof-trigger"
+                                            data-proof-url="{{ c.get('bukti_transfer_url') }}"
+                                            data-proof-label="{{ c.get('nama_anggota', '-') }}">
+                                        <img src="{{ c.get('bukti_transfer_url') }}"
+                                             alt="Bukti cicilan {{ c.get('nama_anggota', '-') }}"
+                                             class="rounded border"
+                                             style="width: 64px; height: 44px; object-fit: cover;">
+                                    </button>
+                                    {% else %}
+                                    <span class="text-muted">-</span>
+                                    {% endif %}
+                                </td>
                                 <td class="small">{{ c['keterangan'] }}</td>
                                 <td>
                                     <form action="/pinjaman/cicilan/konfirmasi/{{ c['id_cicilan'] }}" method="POST" class="d-inline"
@@ -415,7 +431,7 @@
                             </tr>
                             {% endfor %}
                         </tbody>
-                    </table>
+                                <td colspan="11" class="text-center text-muted">Belum ada pengajuan cicilan menunggu.</td>
                 </div>
             </div>
         </div>
@@ -425,6 +441,23 @@
 
 {% if not is_admin %}
 <div class="modal fade" id="modalBayarUser" tabindex="-1" aria-hidden="true">
+
+<div class="modal fade" id="cicilanProofModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered modal-lg">
+        <div class="modal-content border-0 shadow-lg">
+            <div class="modal-header">
+                <div>
+                    <p class="text-uppercase text-muted small mb-1">Bukti pembayaran cicilan</p>
+                    <h5 class="modal-title fw-bold mb-0" id="cicilanProofModalTitle">Preview bukti</h5>
+                </div>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Tutup"></button>
+            </div>
+            <div class="modal-body text-center">
+                <img id="cicilanProofModalImage" class="img-fluid rounded border" alt="Bukti cicilan" style="max-height: 75vh; object-fit: contain;">
+            </div>
+        </div>
+    </div>
+</div>
     <div class="modal-dialog modal-lg modal-dialog-centered">
         <div class="modal-content">
             <div class="modal-header">
@@ -966,6 +999,27 @@ function formatRupiahNumber(value) {
     return n.toLocaleString('id-ID');
 }
 
+function renderCicilanProofCell(c) {
+    if (!c.bukti_transfer_url) {
+        return '<td class="small text-muted">-</td>';
+    }
+    const proofUrl = escapeHtml(c.bukti_transfer_url);
+    const proofLabel = escapeHtml(c.nama_anggota || 'Bukti cicilan');
+    return `
+        <td class="small">
+            <button type="button"
+                    class="btn btn-link p-0 cicilan-proof-trigger"
+                    data-proof-url="${proofUrl}"
+                    data-proof-label="${proofLabel}">
+                <img src="${proofUrl}"
+                     alt="Bukti cicilan ${proofLabel}"
+                     class="rounded border"
+                     style="width: 64px; height: 44px; object-fit: cover;">
+            </button>
+        </td>
+    `;
+}
+
 const csrfTokenValue = '{{ csrf_token }}';
 
 function renderCicilanMenunggu(items) {
@@ -976,7 +1030,7 @@ function renderCicilanMenunggu(items) {
     badge.textContent = `${items.length} pengajuan`;
 
     if (!items.length) {
-        tbody.innerHTML = '<tr id="rowCicilanKosong"><td colspan="10" class="text-center text-muted">Belum ada pengajuan cicilan menunggu.</td></tr>';
+        tbody.innerHTML = '<tr id="rowCicilanKosong"><td colspan="11" class="text-center text-muted">Belum ada pengajuan cicilan menunggu.</td></tr>';
         return;
     }
 
@@ -994,6 +1048,7 @@ function renderCicilanMenunggu(items) {
                 </span>
             </td>
             <td class="small"><code>${escapeHtml(c.va_number || '-')}</code></td>
+            ${renderCicilanProofCell(c)}
             <td class="small">${escapeHtml(c.keterangan || '-')}</td>
             <td>
                 <form action="/pinjaman/cicilan/konfirmasi/${encodeURIComponent(c.id_cicilan)}" method="POST" class="d-inline"
@@ -1014,6 +1069,33 @@ function renderCicilanMenunggu(items) {
         </tr>
     `).join('');
 }
+
+document.addEventListener('click', function (event) {
+    const trigger = event.target.closest('.cicilan-proof-trigger');
+    if (!trigger) return;
+
+    const proofUrl = trigger.getAttribute('data-proof-url') || '';
+    if (!proofUrl) return;
+
+    const modalEl = document.getElementById('cicilanProofModal');
+    const modalTitle = document.getElementById('cicilanProofModalTitle');
+    const modalImage = document.getElementById('cicilanProofModalImage');
+    if (!modalEl || !modalTitle || !modalImage || !window.bootstrap) return;
+
+    modalTitle.textContent = `Bukti cicilan - ${trigger.getAttribute('data-proof-label') || 'Preview'}`;
+    modalImage.src = proofUrl;
+    modalImage.alt = trigger.getAttribute('data-proof-label') || 'Bukti cicilan';
+
+    const modal = bootstrap.Modal.getOrCreateInstance(modalEl);
+    modal.show();
+});
+
+document.getElementById('cicilanProofModal')?.addEventListener('hidden.bs.modal', function () {
+    const modalImage = document.getElementById('cicilanProofModalImage');
+    if (modalImage) {
+        modalImage.removeAttribute('src');
+    }
+});
 
 async function refreshCicilanMenunggu() {
     const tbody = document.getElementById('tbodyCicilanMenunggu');

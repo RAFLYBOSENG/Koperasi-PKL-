@@ -26,7 +26,7 @@
             height: 40px;
             object-fit: contain;
         }
-        .notif-dropdown-menu {
+        .notif-dropdown-menu.member-notif {
             width: min(92vw, 380px);
             max-height: 420px;
             overflow: hidden;
@@ -54,7 +54,7 @@
                 <li class="{% if request.path == '/dashboard' %}active{% endif %}">
                     <a href="{{ url_for('dashboard') }}"><i class="fas fa-tachometer-alt me-2"></i>Dashboard</a>
                 </li>
-                {% if 'members.view' in current_permissions or 'members.manage' in current_permissions %}
+                {% if 'members.view' in current_permissions or 'members.manage' in current_permissions or current_role == 'anggota' %}
                 <li class="{% if '/anggota' in request.path %}active{% endif %}">
                     <a href="/anggota"><i class="fas fa-users me-2"></i>Data Anggota</a>
                 </li>
@@ -126,7 +126,7 @@
                         {% endif %}
                     </span>
                     <div class="ms-auto d-flex align-items-center gap-3">
-                        {% if current_user and ('savings.deposit.validate' in current_permissions or 'loans.approve' in current_permissions or 'installments.manage' in current_permissions) %}
+                        {% if current_user and current_role in ['admin', 'super_admin', 'admin_koperasi', 'ketua_pengurus'] %}
                             <div class="dropdown">
                                 <button class="btn btn-sm btn-outline-secondary position-relative" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Notifikasi pengajuan">
                                     <i class="fas fa-bell"></i>
@@ -161,6 +161,75 @@
                                 </div>
                             </div>
                         {% endif %}
+                            {# Member notifications: cicilan due untuk anggota #}
+                            {% if current_user and current_role == 'anggota' %}
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary position-relative" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Notifikasi Cicilan">
+                                        <i class="fas fa-bell"></i>
+                                        {% if notif_cicilan_count > 0 %}
+                                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning notif-counter">
+                                                {{ notif_cicilan_count if notif_cicilan_count < 100 else '99+' }}
+                                            </span>
+                                        {% endif %}
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-end shadow-sm p-0 notif-dropdown-menu member-notif">
+                                        <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
+                                            <strong class="small">Notifikasi Cicilan</strong>
+                                            <span class="badge bg-warning">{{ notif_cicilan_count }}</span>
+                                        </div>
+                                        {% if notif_cicilan_items %}
+                                            <div class="notif-list-scroll">
+                                                {% for n in notif_cicilan_items %}
+                                                <a class="dropdown-item py-2 border-bottom" href="{{ n.url }}">
+                                                    <div class="small fw-semibold text-dark">{{ n.judul }}</div>
+                                                    <div class="small text-muted">{{ n.nominal }} • Periode {{ n.periode }}</div>
+                                                    <div class="small text-secondary">{{ n.status_text }}</div>
+                                                </a>
+                                                {% endfor %}
+                                            </div>
+                                            <div class="px-3 py-2 text-end bg-light">
+                                                <a href="/pinjaman" class="small text-decoration-none">Lihat Pinjaman Saya</a>
+                                            </div>
+                                        {% else %}
+                                            <div class="px-3 py-3 small text-muted">Tidak ada cicilan jatuh tempo.</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endif %}
+                            {% if current_user and current_role == 'bendahara' %}
+                                <div class="dropdown">
+                                    <button class="btn btn-sm btn-outline-secondary position-relative" type="button" data-bs-toggle="dropdown" aria-expanded="false" title="Notifikasi cicilan masuk">
+                                        <i class="fas fa-bell"></i>
+                                        {% if notif_bendahara_cicilan_count > 0 %}
+                                            <span class="position-absolute top-0 start-100 translate-middle badge rounded-pill bg-warning notif-counter">
+                                                {{ notif_bendahara_cicilan_count if notif_bendahara_cicilan_count < 100 else '99+' }}
+                                            </span>
+                                        {% endif %}
+                                    </button>
+                                    <div class="dropdown-menu dropdown-menu-end shadow-sm p-0 notif-dropdown-menu member-notif">
+                                        <div class="px-3 py-2 border-bottom d-flex justify-content-between align-items-center">
+                                            <strong class="small">Notifikasi Cicilan</strong>
+                                            <span class="badge bg-warning">{{ notif_bendahara_cicilan_count }}</span>
+                                        </div>
+                                        {% if notif_bendahara_cicilan_items %}
+                                            <div class="notif-list-scroll">
+                                                {% for n in notif_bendahara_cicilan_items %}
+                                                <a class="dropdown-item py-2 border-bottom" href="{{ n.url }}">
+                                                    <div class="small fw-semibold text-dark">{{ n.judul }}</div>
+                                                    <div class="small text-muted">{{ n.nama }} • {{ n.nominal }}</div>
+                                                    <div class="small text-secondary">{{ n.tanggal }} • {{ n.metode }}</div>
+                                                </a>
+                                                {% endfor %}
+                                            </div>
+                                            <div class="px-3 py-2 text-end bg-light">
+                                                <a href="/pinjaman" class="small text-decoration-none">Lihat Pengajuan Cicilan</a>
+                                            </div>
+                                        {% else %}
+                                            <div class="px-3 py-3 small text-muted">Tidak ada cicilan baru yang menunggu verifikasi.</div>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                            {% endif %}
                         <span class="text-muted">
                             <i class="fas fa-calendar me-1"></i>
                             {{ now }}
